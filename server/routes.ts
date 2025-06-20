@@ -11,12 +11,12 @@ const loginSchema = z.object({
 });
 
 const companyLoginSchema = z.object({
-  companyCode: z.string().min(1),
+  companyCode: z.string().min(1).transform(val => val.toUpperCase()),
   companyPassword: z.string().min(1),
 });
 
 const companyCodeSchema = z.object({
-  companyCode: z.string().min(1),
+  companyCode: z.string().min(1).transform(val => val.toUpperCase()),
 });
 
 const faceDataSchema = z.object({
@@ -110,8 +110,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const companyData = insertCompanySchema.parse(req.body);
       
+      // Normalize company code to uppercase
+      const normalizedCompanyCode = companyData.companyCode.toUpperCase();
+      
       // Check if company code already exists
-      const existingCompany = await storage.getCompanyByCode(companyData.companyCode);
+      const existingCompany = await storage.getCompanyByCode(normalizedCompanyCode);
       if (existingCompany) {
         return res.status(400).json({ message: "Company code already exists" });
       }
@@ -121,6 +124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const company = await storage.createCompany({
         ...companyData,
+        companyCode: normalizedCompanyCode,
         companyPassword: hashedPassword,
       });
 
@@ -168,12 +172,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { userId } = req.query;
       const { companyCode } = companyCodeSchema.parse(req.body);
       
+      console.log(`Company join attempt - userId: ${userId}, companyCode: "${companyCode}"`);
+      
       if (!userId || isNaN(Number(userId))) {
         return res.status(400).json({ message: "Invalid user ID" });
       }
 
       const company = await storage.getCompanyByCode(companyCode);
+      console.log(`Company lookup result:`, company);
+      
       if (!company) {
+        // List all companies for debugging
+        const allCompanies = Array.from((storage as any).companies.values()) as any[];
+        console.log(`Available companies:`, allCompanies.map(c => ({ id: c.id, name: c.name, code: c.companyCode })));
         return res.status(404).json({ message: "Company not found" });
       }
 
