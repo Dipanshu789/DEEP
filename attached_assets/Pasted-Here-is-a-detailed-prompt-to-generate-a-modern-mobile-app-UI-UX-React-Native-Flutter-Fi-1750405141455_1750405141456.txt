@@ -1,0 +1,93 @@
+Here is a **detailed prompt** to generate a **modern mobile app UI/UX** (React Native / Flutter / Figma / UI Design AI) that implements all your described flows **step-by-step**, with secure logic and a clean, futuristic interface.
+
+---
+
+### 📱 **Prompt to Generate Smart Attendance Mobile App (Secure & Modern)**
+
+> **Prompt:**
+>
+> Design a **secure, corruption-free smart attendance mobile app UI** with a clean, modern interface (rounded cards, soft shadows, smooth transitions, blue-white tones, minimal icons, responsive layout). Build the following screens and flows with a futuristic but user-friendly style:
+>
+> ---
+>
+> ### 🔄 1. **Loading Screen**
+>
+> * Full-screen logo splash animation with progress bar or spinner
+>
+> ### 👋 2. **Welcome Page**
+>
+> * Two large buttons: **Login** | **Signup**
+> * Single screen handles login/signup for both user and admin
+> * Floating tabs or toggle switch between login and register form
+> * Form fields: Email, Password (with password visibility toggle), Confirm Password (for signup)
+>
+> ### 🙍 3. **Post-Login/Signup: Role Selection Page**
+>
+> * Clean screen with two cards/buttons:
+>
+>   * `👤 I am a User`
+>   * `🛠️ I am an Admin`
+> * After selection, navigate to face registration
+>
+> ### 🎥 4. **Face Registration Page (For Both Roles)**
+>
+> * Camera access with live preview
+> * UI to guide face capture with liveness detection (e.g., "Blink", "Turn left", etc.)
+> * Progress bar (e.g., 3/5 face samples collected)
+> * "Register Face" CTA button
+> * Upon success: animated checkmark + continue button
+>
+> ---
+>
+> ### 👨‍💼 5. **After Face Registration – Role-Based Navigation**
+>
+> #### 🧑‍💼 If **User**:
+>
+> * Navigate to **Company Code Page**
+> * Placeholder: "Enter your company code"
+> * Button: "Next"
+>
+> #### 👩‍💼 If **Admin**:
+>
+> * Navigate to **Company Login Page**
+> * Placeholder 1: "Enter your company code"
+> * Placeholder 2: "Enter your company password"
+> * Button: "Login to Company"
+> * Below: Small text link → `"New Admin? Register Company"`
+>
+> ---
+>
+> ### 🏢 6. **Register Company Page (Admin Only)**
+>
+> * Form fields:
+>
+>   * Company Name
+>   * Company Email
+>   * Number of Employees
+>   * Create Company Code
+>   * Create Company Password
+> * Button: "Register Company"
+> * On success: Automatically redirect to **Company Login Page**
+>
+> ---
+>
+> ### 🎨 UI/UX Notes:
+>
+> * Use modern fonts (e.g., Inter, Poppins)
+> * Use soft blue/white/gray palette
+> * Rounded components (12–16px radius), neumorphic or glassmorphism style
+> * Use Lottie animations for success or transitions
+> * Mobile-first responsive layout, smooth transitions between screens
+> * Icons: Lucide or Feather icons for clean design
+>
+> Ensure navigation is **seamless**, and security elements (e.g., password hiding, loading states, progress indicators) are **visibly present**. The role selection must act as a secure path split, and company validation must be emphasized with proper input handling and errors.
+
+---
+
+Would you like:
+
+* This prompt converted to a **PDF**?
+* **AI-generated mockups** for these pages?
+* A starter **React Native / Flutter codebase** built on top of this flow?
+
+Let me know, and I’ll proceed with the next steps you need.
