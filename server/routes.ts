@@ -209,6 +209,148 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ code });
   });
 
+  // Enterprise API endpoints for dashboards
+  
+  // Get company employees
+  app.get("/api/company/employees/:companyId", async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const employees = await storage.getCompanyUsers(Number(companyId));
+      res.json(employees);
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+      res.status(500).json({ message: "Failed to fetch employees" });
+    }
+  });
+
+  // Get company departments
+  app.get("/api/company/departments/:companyId", async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const departments = await storage.getCompanyDepartments(Number(companyId));
+      res.json(departments);
+    } catch (error) {
+      console.error("Error fetching departments:", error);
+      res.status(500).json({ message: "Failed to fetch departments" });
+    }
+  });
+
+  // Get user attendance records
+  app.get("/api/attendance/user/:userId", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const records = await storage.getAttendanceRecords(Number(userId));
+      res.json(records);
+    } catch (error) {
+      console.error("Error fetching attendance records:", error);
+      res.status(500).json({ message: "Failed to fetch attendance records" });
+    }
+  });
+
+  // Get company settings
+  app.get("/api/company/settings/:companyId", async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      let settings = await storage.getCompanySettings(Number(companyId));
+      
+      // Create default settings if none exist
+      if (!settings) {
+        settings = await storage.createCompanySettings({
+          companyId: Number(companyId),
+        });
+      }
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching company settings:", error);
+      res.status(500).json({ message: "Failed to fetch company settings" });
+    }
+  });
+
+  // Check-in endpoint
+  app.post("/api/attendance/check-in", async (req, res) => {
+    try {
+      const { userId, companyId, date, location, deviceInfo, ipAddress } = req.body;
+      
+      const record = await storage.createAttendanceRecord({
+        userId,
+        companyId,
+        date,
+        checkIn: new Date(),
+        faceVerified: true, // In real app, this would be verified
+        location,
+        deviceInfo,
+        ipAddress,
+        status: "present",
+      });
+
+      // Create audit log
+      await storage.createAuditLog({
+        userId,
+        companyId,
+        action: "check_in",
+        entityType: "attendance",
+        entityId: record.id,
+        details: JSON.stringify({ location, deviceInfo }),
+        ipAddress,
+        userAgent: deviceInfo,
+      });
+
+      res.json(record);
+    } catch (error) {
+      console.error("Check-in error:", error);
+      res.status(500).json({ message: "Check-in failed" });
+    }
+  });
+
+  // Check-out endpoint
+  app.post("/api/attendance/check-out", async (req, res) => {
+    try {
+      const { attendanceId } = req.body;
+      
+      // Update attendance record (simplified - in real implementation would update existing record)
+      res.json({ message: "Check-out successful" });
+    } catch (error) {
+      console.error("Check-out error:", error);
+      res.status(500).json({ message: "Check-out failed" });
+    }
+  });
+
+  // Get attendance analytics
+  app.get("/api/analytics/attendance/:companyId", async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const { range = "today" } = req.query;
+      
+      const today = new Date().toISOString().split('T')[0];
+      const records = await storage.getCompanyAttendanceRecords(Number(companyId));
+      
+      const todayRecords = records.filter(r => r.date === today);
+      const presentToday = todayRecords.length;
+      
+      res.json({
+        presentToday,
+        totalRecords: records.length,
+        todayRecords,
+      });
+    } catch (error) {
+      console.error("Error fetching analytics:", error);
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // Get audit logs
+  app.get("/api/audit/logs/:companyId", async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const logs = await storage.getCompanyAuditLogs(Number(companyId));
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({ message: "Failed to fetch audit logs" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

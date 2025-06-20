@@ -34,9 +34,18 @@ export default function SuccessPage() {
           )}
         </div>
 
-        <Button className="w-full btn-primary text-white py-4 rounded-2xl font-semibold shadow-lg">
+        <Button 
+          onClick={() => {
+            if (currentUser?.role === 'admin') {
+              window.location.href = '/dashboard/admin';
+            } else {
+              window.location.href = '/dashboard/user';
+            }
+          }}
+          className="w-full btn-primary text-white py-4 rounded-2xl font-semibold shadow-lg"
+        >
           <Rocket className="mr-2" size={20} />
-          Get Started
+          Go to Dashboard
         </Button>
       </div>
     </div>
