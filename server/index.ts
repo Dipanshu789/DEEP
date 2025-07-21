@@ -1,10 +1,19 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import expressSession from "./session";
+import cors from "cors";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(cors({
+  origin: "http://localhost:3000", // Change if your frontend runs elsewhere
+  credentials: true,
+}));
+// Set body size limit globally for large image uploads
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+app.use(expressSession); // <-- Ensure session is loaded before routes
 
 app.use((req, res, next) => {
   const start = Date.now();

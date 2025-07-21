@@ -1,70 +1,89 @@
-import { Switch, Route } from "wouter";
+import React from "react";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { MobileNav } from "@/components/mobile-nav";
-import LoadingPage from "@/pages/loading";
-import WelcomePage from "@/pages/welcome";
-import RoleSelectionPage from "@/pages/role-selection";
-import FaceRegistrationPage from "@/pages/face-registration";
-import CompanyCodePage from "@/pages/company-code";
-import CompanyLoginPage from "@/pages/company-login";
-import CompanyRegisterPage from "@/pages/company-register";
-import SuccessPage from "@/pages/success";
-import UserDashboard from "@/pages/user-dashboard";
-import AdminDashboard from "@/pages/admin-dashboard";
+import { BottomNavigation } from "@/components/ui/bottom-navigation";
+import { useAuth } from "@/hooks/useAuth";
+import Landing from "@/pages/Landing";
+import Home from "@/pages/Home";
+import Attendance from "@/pages/Attendance";
+import Team from "@/pages/Team";
+import Profile from "@/pages/Profile";
+import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
-import { getCurrentUser } from "@/lib/auth";
+import AdminDashboard from "@/pages/AdminDashboard";
+import UserDashboard from "@/pages/UserDashboard";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import Message from "@/pages/Message";
 
 function Router() {
-  const currentUser = getCurrentUser();
-  
-  // Redirect to appropriate dashboard if user is logged in and registered
-  if (currentUser && currentUser.isRegistered && currentUser.companyId) {
-    return (
-      <Switch>
-        <Route path="/dashboard/user" component={UserDashboard} />
-        <Route path="/dashboard/admin" component={AdminDashboard} />
-        <Route path="/" component={currentUser.role === 'admin' ? AdminDashboard : UserDashboard} />
-        <Route path="/welcome" component={WelcomePage} />
-        <Route path="/role-selection" component={RoleSelectionPage} />
-        <Route path="/face-registration" component={FaceRegistrationPage} />
-        <Route path="/company-code" component={CompanyCodePage} />
-        <Route path="/company-login" component={CompanyLoginPage} />
-        <Route path="/company-register" component={CompanyRegisterPage} />
-        <Route path="/success" component={SuccessPage} />
-        <Route component={NotFound} />
-      </Switch>
-    );
-  }
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const [location, setLocation] = useLocation();
+  const userRole = (user as any)?.role;
+
+  // Debug: log user object after login
+  React.useEffect(() => {
+    // Removed logging of sensitive user object for privacy
+  }, [user]);
+
+  // Onboarding: Only show for first-time users
+  React.useEffect(() => {
+    const seen = localStorage.getItem("hasSeenOnboarding");
+    if (!isLoading && !isAuthenticated && !seen && (location === "/" || location === "/landing")) {
+      setLocation("/onboarding", { replace: true });
+    }
+    if (!isLoading && isAuthenticated && user) {
+      if (location === "/" || location === "/landing" || location === "/onboarding") {
+        if (userRole === "admin") {
+          setLocation("/admin-dashboard", { replace: true });
+        } else {
+          setLocation("/user-dashboard", { replace: true });
+        }
+      }
+    }
+  }, [isLoading, isAuthenticated, user, userRole, location, setLocation]);
+
+  // Fix: Use static import for Onboarding page to avoid require error
+  const Onboarding = React.lazy(() => import("@/pages/Onboarding"));
 
   return (
-    <Switch>
-      <Route path="/" component={LoadingPage} />
-      <Route path="/welcome" component={WelcomePage} />
-      <Route path="/role-selection" component={RoleSelectionPage} />
-      <Route path="/face-registration" component={FaceRegistrationPage} />
-      <Route path="/company-code" component={CompanyCodePage} />
-      <Route path="/company-login" component={CompanyLoginPage} />
-      <Route path="/company-register" component={CompanyRegisterPage} />
-      <Route path="/success" component={SuccessPage} />
-      <Route path="/dashboard/user" component={UserDashboard} />
-      <Route path="/dashboard/admin" component={AdminDashboard} />
-      <Route component={NotFound} />
-    </Switch>
+    <div className="relative">
+      <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+        <Switch>
+          <Route path="/onboarding" component={Onboarding} />
+          {isLoading || !isAuthenticated ? (
+            <Route path="/" component={Landing} />
+          ) : (
+            <>
+              <Route path="/" component={Home} />
+              <Route path="/attendance" component={Attendance} />
+              <Route path="/team" component={Team} />
+              <Route path="/profile" component={Profile} />
+              <Route path="/settings" component={Settings} />
+              <Route path="/privacy-policy" component={PrivacyPolicy} />
+              <Route path="/admin-dashboard" component={AdminDashboard} />
+              <Route path="/user-dashboard" component={UserDashboard} />
+              <Route path="/message" component={Message} />
+            </>
+          )}
+          <Route component={NotFound} />
+        </Switch>
+      </React.Suspense>
+      {/* Show bottom navigation only for authenticated users */}
+      {!isLoading && isAuthenticated && <BottomNavigation />}
+    </div>
   );
 }
+
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <div className="relative">
-          <Router />
-          <MobileNav />
-          <Toaster />
-        </div>
+        <Toaster />
+        <Router />
       </TooltipProvider>
     </QueryClientProvider>
   );

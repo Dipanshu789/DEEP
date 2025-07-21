@@ -12,6 +12,9 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    throw new Error('Use only relative /api URLs in apiRequest to ensure session/cookie support via Vite proxy.');
+  }
   const res = await fetch(url, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},

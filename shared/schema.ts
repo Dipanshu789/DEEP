@@ -1,179 +1,159 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  timestamp,
+  jsonb,
+  index,
+  serial,
+  integer,
+  boolean,
+  decimal,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { relations } from "drizzle-orm";
+import { messages } from "./messages.schema";
 
+// Session storage table for Replit Auth
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table for Replit Auth
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  password: text("password").notNull(),
-  firstName: text("first_name"),
-  lastName: text("last_name"),
-  role: text("role").notNull(), // 'user' | 'admin' | 'super_admin'
-  faceData: text("face_data"), // Encrypted face biometric data
-  isRegistered: boolean("is_registered").default(false),
-  isActive: boolean("is_active").default(true),
-  companyId: integer("company_id"),
-  department: text("department"),
-  position: text("position"),
-  lastLogin: timestamp("last_login"),
+  id: varchar("id").primaryKey().notNull(),
+  email: varchar("email").unique(),
+  fullName: varchar("full_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  role: varchar("role", { enum: ["admin", "user"] }).notNull().default("user"),
+  faceData: text("face_data"), // Base64 encoded face image
+  faceDescriptor: text("face_descriptor"), // JSON stringified array of face descriptor
+  companyCode: varchar("company_code"),
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Companies table
 export const companies = pgTable("companies", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull(),
-  phone: text("phone"),
-  address: text("address"),
-  industry: text("industry"),
-  employeeCount: text("employee_count").notNull(),
-  companyCode: text("company_code").notNull().unique(),
-  companyPassword: text("company_password").notNull(),
-  adminId: integer("admin_id").notNull(),
-  isActive: boolean("is_active").default(true),
-  subscription: text("subscription").default("basic"), // 'basic' | 'premium' | 'enterprise'
-  maxEmployees: integer("max_employees").default(50),
+  name: varchar("name").notNull(),
+  email: varchar("email").notNull(),
+  companyCode: varchar("company_code").unique().notNull(),
+  passwordHash: text("password_hash").notNull(),
+  employeeCount: integer("employee_count").notNull(),
+  adminId: varchar("admin_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const attendanceRecords = pgTable("attendance_records", {
+// Geofences table
+export const geofences = pgTable("geofences", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  companyId: integer("company_id").notNull(),
-  checkIn: timestamp("check_in"),
-  checkOut: timestamp("check_out"),
-  date: text("date").notNull(),
-  faceVerified: boolean("face_verified").default(false),
-  location: text("location"), // GPS coordinates or office location
-  deviceInfo: text("device_info"), // Device used for attendance
-  ipAddress: text("ip_address"), // Security tracking
-  status: text("status").default("present"), // 'present' | 'late' | 'absent' | 'half_day'
-  notes: text("notes"), // Admin notes or user remarks
-  approvedBy: integer("approved_by"), // Admin who approved manual entries
+  adminId: varchar("admin_id").notNull(),
+  companyCode: varchar("company_code").notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 8 }).notNull(),
+  longitude: decimal("longitude", { precision: 11, scale: 8 }).notNull(),
+  altitude: decimal("altitude", { precision: 8, scale: 2 }),
+  radius: integer("radius").notNull().default(100), // meters
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// New enterprise tables
-export const departments = pgTable("departments", {
+// Attendance logs table
+export const attendanceLogs = pgTable("attendance_logs", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  companyId: integer("company_id").notNull(),
-  managerId: integer("manager_id"),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const auditLogs = pgTable("audit_logs", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id"),
-  companyId: integer("company_id").notNull(),
-  action: text("action").notNull(), // 'login', 'check_in', 'check_out', 'face_register', etc.
-  entityType: text("entity_type"), // 'user', 'company', 'attendance', etc.
-  entityId: integer("entity_id"),
-  details: text("details"), // JSON string with additional info
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
+  userId: varchar("user_id").notNull(),
+  companyCode: varchar("company_code").notNull(),
+  date: varchar("date").notNull(), // YYYY-MM-DD format
+  checkInTime: timestamp("check_in_time"),
+  checkOutTime: timestamp("check_out_time"),
+  checkInLat: decimal("check_in_lat", { precision: 10, scale: 8 }),
+  checkInLon: decimal("check_in_lon", { precision: 11, scale: 8 }),
+  checkOutLat: decimal("check_out_lat", { precision: 10, scale: 8 }),
+  checkOutLon: decimal("check_out_lon", { precision: 11, scale: 8 }),
+  isTracking: boolean("is_tracking").default(false),
+  hoursWorked: decimal("hours_worked", { precision: 5, scale: 2 }),
+  status: varchar("status", { enum: ["present", "absent", "late", "incomplete", "complete"] }).default("incomplete"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const companySettings = pgTable("company_settings", {
-  id: serial("id").primaryKey(),
-  companyId: integer("company_id").notNull().unique(),
-  workingHours: text("working_hours").default('{"start":"09:00","end":"17:00"}'), // JSON
-  workingDays: text("working_days").default('["mon","tue","wed","thu","fri"]'), // JSON array
-  timeZone: text("time_zone").default("UTC"),
-  lateThreshold: integer("late_threshold").default(15), // minutes
-  requireFaceVerification: boolean("require_face_verification").default(true),
-  allowManualEntry: boolean("allow_manual_entry").default(false),
-  geoFencing: text("geo_fencing"), // JSON with allowed locations
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+// Relations
+export const usersRelations = relations(users, ({ one, many }) => ({
+  company: one(companies, {
+    fields: [users.companyCode],
+    references: [companies.companyCode],
+  }),
+  attendanceLogs: many(attendanceLogs),
+}));
+
+export const companiesRelations = relations(companies, ({ one, many }) => ({
+  admin: one(users, {
+    fields: [companies.adminId],
+    references: [users.id],
+  }),
+  employees: many(users),
+  geofence: one(geofences),
+}));
+
+export const geofencesRelations = relations(geofences, ({ one }) => ({
+  company: one(companies, {
+    fields: [geofences.companyCode],
+    references: [companies.companyCode],
+  }),
+  admin: one(users, {
+    fields: [geofences.adminId],
+    references: [users.id],
+  }),
+}));
+
+export const attendanceLogsRelations = relations(attendanceLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [attendanceLogs.userId],
+    references: [users.id],
+  }),
+  company: one(companies, {
+    fields: [attendanceLogs.companyCode],
+    references: [companies.companyCode],
+  }),
+}));
+
+// Insert schemas
+export const insertUserSchema = createInsertSchema(users).omit({
+  createdAt: true,
+  updatedAt: true,
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  email: true,
-  password: true,
-  firstName: true,
-  lastName: true,
-  role: true,
-  faceData: true,
-  department: true,
-  position: true,
+export const insertCompanySchema = createInsertSchema(companies).omit({
+  id: true,
+  createdAt: true,
 });
 
-export const insertCompanySchema = createInsertSchema(companies).pick({
-  name: true,
-  email: true,
-  phone: true,
-  address: true,
-  industry: true,
-  employeeCount: true,
-  companyCode: true,
-  companyPassword: true,
-  adminId: true,
-  subscription: true,
-  maxEmployees: true,
+export const insertGeofenceSchema = createInsertSchema(geofences).omit({
+  id: true,
+  createdAt: true,
 });
 
-export const insertDepartmentSchema = createInsertSchema(departments).pick({
-  name: true,
-  description: true,
-  companyId: true,
-  managerId: true,
-});
-
-export const insertAttendanceSchema = createInsertSchema(attendanceRecords).pick({
-  userId: true,
-  companyId: true,
-  checkIn: true,
-  checkOut: true,
-  date: true,
-  faceVerified: true,
-  location: true,
-  deviceInfo: true,
-  ipAddress: true,
-  status: true,
-  notes: true,
-  approvedBy: true,
-});
-
-export const insertAuditLogSchema = createInsertSchema(auditLogs).pick({
-  userId: true,
-  companyId: true,
-  action: true,
-  entityType: true,
-  entityId: true,
-  details: true,
-  ipAddress: true,
-  userAgent: true,
-});
-
-export const insertCompanySettingsSchema = createInsertSchema(companySettings).pick({
-  companyId: true,
-  workingHours: true,
-  workingDays: true,
-  timeZone: true,
-  lateThreshold: true,
-  requireFaceVerification: true,
-  allowManualEntry: true,
-  geoFencing: true,
+export const insertAttendanceLogSchema = createInsertSchema(attendanceLogs).omit({
+  id: true,
+  createdAt: true,
 });
 
 // Types
-export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
-export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Company = typeof companies.$inferSelect;
-export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
-export type Department = typeof departments.$inferSelect;
-export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
-export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
-export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
-export type AuditLog = typeof auditLogs.$inferSelect;
-export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
-export type CompanySettings = typeof companySettings.$inferSelect;
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type Geofence = typeof geofences.$inferSelect;
+export type InsertGeofence = z.infer<typeof insertGeofenceSchema>;
+export type AttendanceLog = typeof attendanceLogs.$inferSelect;
+export type InsertAttendanceLog = z.infer<typeof insertAttendanceLogSchema>;
+
+export { messages };
+export type { Message, InsertMessage } from "./messages.schema";
