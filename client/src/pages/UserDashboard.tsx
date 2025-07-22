@@ -260,7 +260,9 @@ export default function UserDashboard() {
     const istOffset = 5.5 * 60 * 60 * 1000;
     const istDate = new Date(utc + istOffset);
     const hour = istDate.getHours();
-    return hour >= 9 && hour < 11;
+    const minute = istDate.getMinutes();
+    // Allow check-in from 9:00 to 11:30 AM IST
+    return (hour > 9 || (hour === 9 && minute >= 0)) && (hour < 11 || (hour === 11 && minute <= 30));
   }
   const canCheckInNow = isCheckInAllowedIST();
 
@@ -490,41 +492,46 @@ export default function UserDashboard() {
 
 return (
     <div className="min-h-screen w-full flex flex-col bg-[#F7F7F7] dark:bg-[#181A20]" style={{ transition: 'background 0.3s' }}>
-      {/* Modern Capsule Navigation Header */}
-      <header className="w-full flex justify-center items-center py-6 px-4">
-        <div className="flex items-center justify-between w-full max-w-3xl bg-white/70 dark:bg-[#232946]/80 backdrop-blur-lg shadow-lg rounded-full px-8 py-4 gap-6 border border-gray-200 dark:border-[#232946]" style={{ borderRadius: '999px', transition: 'background 0.3s, border 0.3s' }}>
-          <div className="flex items-center gap-4">
-            <div className="relative w-16 h-16 sm:w-20 sm:h-20">
+      {/* Modern Capsule Navigation Header - Compact Capsule */}
+      <header className="w-full flex justify-center items-center py-2 px-2 sm:py-4 sm:px-4">
+        <div
+          className="flex flex-row items-center justify-between w-full max-w-sm bg-white/95 dark:bg-[#232946]/95 backdrop-blur-lg shadow-lg rounded-full px-4 sm:px-6 py-2 gap-3 border border-gray-200 dark:border-[#232946]"
+          style={{ borderRadius: '999px', transition: 'background 0.3s, border 0.3s', minHeight: 56, boxShadow: '0 4px 16px rgba(44,62,80,0.10)' }}
+        >
+          <div className="flex items-center gap-3 w-auto">
+            <div className="relative w-12 h-12">
               <img
                 src={profileImage || "/assets/client.png"}
                 alt="Profile"
-                className="w-full h-full object-cover rounded-full border-4 border-primary bg-gradient-to-br from-purple-300 to-pink-300 shadow-md"
+                className="w-full h-full object-cover rounded-full border-2 border-primary bg-gradient-to-br from-purple-300 to-pink-300 shadow"
               />
             </div>
-            <div className="flex flex-col items-start ml-2">
-              <span className="text-base text-gray-500 dark:text-gray-400">Welcome</span>
-              <span className="text-xl font-bold text-gray-800 dark:text-white leading-tight">
+            <div className="flex flex-col items-start ml-1">
+              <span className="text-base font-semibold text-gray-800 dark:text-white leading-tight">
                 {userDetails && typeof userDetails.fullName === "string" && userDetails.fullName.trim() !== "" ? userDetails.fullName : "User"}
               </span>
+              {userDetails?.role === "admin" && (
+                <span className="text-xs text-blue-600 dark:text-blue-300 font-medium mt-0.5">Admin</span>
+              )}
             </div>
           </div>
-          {/* Modern Capsule Logout Button (matches admin dashboard) */}
+          {/* Modern Capsule Logout Button (compact) */}
           <button
-            className="custom-logout-btn Btn flex items-center justify-center w-12 h-12 rounded-full bg-white dark:bg-[#232946] shadow transition-all duration-300 hover:bg-black hover:text-white dark:hover:bg-pink-600 dark:hover:text-white"
-            style={{ border: 'none', cursor: 'pointer', position: 'relative', overflow: 'hidden', borderRadius: '999px', minWidth: 56, minHeight: 56, fontWeight: 600, fontSize: '1.1em', boxShadow: '0 2px 12px rgba(44, 62, 80, 0.18)', color: 'inherit', outline: 'none' }}
+            className="custom-logout-btn Btn flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#232946] shadow transition-all duration-300 hover:bg-black hover:text-white dark:hover:bg-pink-600 dark:hover:text-white"
+            style={{ border: 'none', cursor: 'pointer', position: 'relative', overflow: 'hidden', borderRadius: '999px', minWidth: 40, minHeight: 40, fontWeight: 600, fontSize: '1em', boxShadow: '0 2px 8px rgba(44, 62, 80, 0.12)', color: 'inherit', outline: 'none' }}
             onClick={handleLogout}
           >
-            <svg viewBox="0 0 512 512" style={{ width: '22px', fill: 'currentColor', filter: 'drop-shadow(0 0 6px #232946)' }} className="dark:fill-white dark:drop-shadow-lg">
+            <svg viewBox="0 0 512 512" style={{ width: '18px', fill: 'currentColor', filter: 'drop-shadow(0 0 4px #232946)' }} className="dark:fill-white dark:drop-shadow-lg">
               <path d="M377.9 105.9L500.7 228.7c7.2 7.2 11.3 17.1 11.3 27.3s-4.1 20.1-11.3 27.3L377.9 406.1c-6.4 6.4-15 9.9-24 9.9c-18.7 0-33.9-15.2-33.9-33.9l0-62.1-128 0c-17.7 0-32-14.3-32-32l0-64c0-17.7 14.3-32 32-32l128 0 0-62.1c0-18.7 15.2-33.9 33.9-33.9c9 0 17.6 3.6 24 9.9zM160 96L96 96c-17.7 0-32 14.3-32 32l0 256c0 17.7 14.3 32 32 32l64 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-64 0c-53 0-96-43-96-96L0 128C0 75 43 32 96 32l64 0c17.7 0 32 14.3 32 32s-14.3 32-32 32z" />
             </svg>
           </button>
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-4xl mx-auto py-4 px-2 sm:px-4 lg:px-8">
       {/* Profile Card - Glassmorphism (profile photo below company/admin info, no white bg) */}
-      <div className="flex flex-col items-center justify-center mb-10">
-        <div className="mb-2">
+      <div className="flex flex-col items-center justify-center mb-8 sm:mb-10">
+        <div className="mb-2 text-center">
           <span className="text-gray-500 dark:text-gray-400">Company: </span>
           <span className="font-semibold text-primary dark:text-pink-400">{company?.name || "Company"}</span>
           {company?.admin && (
@@ -539,26 +546,33 @@ return (
         <img
           src={userImg}
           alt="User"
-          className="w-60 h-67 object-contain mb-4 rounded-xl shadow-lg dark:shadow-blue-900 dark:bg-[#232946]"
+          className="w-40 h-40 sm:w-60 sm:h-67 object-contain mb-4 rounded-xl shadow-lg dark:shadow-blue-900 dark:bg-[#232946]"
           style={{ background: 'none', borderRadius: 0, boxShadow: 'none' }}
         />
         {uploading && <span className="text-primary text-sm">Uploading...</span>}
       </div>
         {/* Welcome Header */}
-        <div className="text-center mb-8">
-        <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-pink-500 to-blue-500 mb-2 animate-slide-up">Welcome Back!</h1>
-        <p className="text-lg text-gray-700 dark:text-gray-300 font-medium animate-fade-in">
-          {currentTime.toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          })}
-        </p>
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-pink-500 to-blue-500 mb-2 animate-slide-up">Welcome Back!</h1>
+          <p className="text-lg text-gray-700 dark:text-gray-300 font-medium animate-fade-in">
+            {currentTime.toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
+          </p>
+          {/* Check-in timing message */}
+          <div className="mt-2 flex items-center justify-center">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold shadow-sm border border-blue-200">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" className="inline-block mr-1"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              Check-in allowed: <span className="font-bold ml-1">9:00 AM – 11:30 AM IST</span>
+            </span>
+          </div>
         </div>
 
         {/* Status Card */}
-        <Card className="shadow-lg mb-8 bg-white/80 dark:bg-[#232946] rounded-2xl border border-gray-200 dark:border-[#232946]">
+        <Card className="shadow-lg mb-6 sm:mb-8 bg-white/80 dark:bg-[#232946] rounded-2xl border border-gray-200 dark:border-[#232946]">
         <CardContent className="p-6 glass-card">
             <div className="text-center">
               <div className={`status-indicator ${status.className} mb-4`}>
@@ -578,7 +592,7 @@ return (
         </Card>
 
         {/* Check-In/Check-Out Buttons Horizontal Capsule Card */}
-        <Card className="shadow-lg mb-8 bg-white/80 dark:bg-[#232946] rounded-full border border-gray-200 dark:border-[#232946]" style={{ maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', boxShadow: '0 2px 12px rgba(44,62,80,0.12)' }}>
+        <Card className="shadow-lg mb-6 sm:mb-8 bg-white/80 dark:bg-[#232946] rounded-full border border-gray-200 dark:border-[#232946]" style={{ maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', boxShadow: '0 2px 12px rgba(44,62,80,0.12)' }}>
           <CardContent className="p-4 glass-card">
             <div className="flex flex-row gap-2 justify-start items-center w-full" style={{ paddingLeft: 12 }}>
               <Button
@@ -586,7 +600,7 @@ return (
                 disabled={hasCheckedInToday || !canCheckInNow}
                 className="btn-secondary px-6 py-3 text-base font-semibold shadow-md rounded-full"
                 style={{ borderRadius: '999px', minWidth: 120, boxShadow: '0 2px 8px rgba(44,62,80,0.10)' }}
-                title={!canCheckInNow ? "Check-in allowed only between 9:00 AM and 11:00 AM IST" : undefined}
+                title={!canCheckInNow ? "Check-in allowed only between 9:00 AM and 11:30 AM IST" : undefined}
               >
                 <Play className="mr-2 h-5 w-5" />
                 Check In
@@ -634,7 +648,7 @@ return (
       )}
 
         {/* Today's Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <Card className="bg-white/80 dark:bg-[#232946] rounded-2xl border border-gray-200 dark:border-[#232946]">
             <CardContent className="p-6 text-center glass-card">
               <Clock className="mx-auto text-3xl text-primary mb-3 h-8 w-8" />
@@ -772,9 +786,9 @@ return (
       )}
 
       {/* Footer Section */}
-      <div className="w-full fixed bottom-0 left-0 bg-white shadow-lg flex justify-center items-center py-3 z-50">
+      <div className="w-full fixed bottom-0 left-0 bg-white shadow-lg flex justify-center items-center py-2 sm:py-3 z-50">
         {/* Home Icon */}
-        <div className="mx-6">
+        <div className="mx-3 sm:mx-6">
           <button className="footer-btn" onClick={() => navigate('/')} title="Home">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="size-6">
               <path d="M3 12l9-9 9 9" />
@@ -783,7 +797,7 @@ return (
           </button>
         </div>
         {/* Attendance Icon */}
-        <div className="mx-6">
+        <div className="mx-3 sm:mx-6">
           <button className="footer-btn" onClick={() => navigate('/attendance')} title="Attendance">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="size-6">
               <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
@@ -800,7 +814,7 @@ return (
           </button>
         </StyledWrapper>
         {/* Profile Icon */}
-        <div className="mx-6">
+        <div className="mx-3 sm:mx-6">
           <button className="footer-btn" onClick={() => navigate('/profile')} title="Profile">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="size-6">
               <circle cx="12" cy="7" r="4" />
@@ -809,7 +823,7 @@ return (
           </button>
         </div>
         {/* Settings Icon */}
-        <div className="mx-6">
+        <div className="mx-3 sm:mx-6">
           <button className="footer-btn" onClick={() => navigate('/settings')} title="Settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="size-6">
               <circle cx="12" cy="12" r="3" />
