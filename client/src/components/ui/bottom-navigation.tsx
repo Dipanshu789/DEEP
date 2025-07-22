@@ -26,12 +26,7 @@ const navigationItems: BottomNavItem[] = [
     label: "Attendance",
     href: "/attendance",
   },
-  // Message icon inserted between Attendance and Profile
-  {
-    icon: MessageCircle,
-    label: "Messages",
-    href: "/message",
-  },
+  // Message icon removed for floating button
   {
     icon: Users,
     label: "Team",
