@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -23,10 +23,103 @@ function Router() {
   const [location, setLocation] = useLocation();
   const userRole = (user as any)?.role;
 
-  // Debug: log user object after login
-  React.useEffect(() => {
-    // Removed logging of sensitive user object for privacy
-  }, [user]);
+  // State for draggable message icon position
+  const [position, setPosition] = useState<{ top: number; left: number }>({ top: window.innerHeight - 96, left: window.innerWidth - 96 });
+  const draggingRef = useRef(false);
+  const offsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const iconRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    // Update position on window resize to keep icon inside viewport
+    function handleResize() {
+      setPosition(pos => {
+        const maxLeft = window.innerWidth - 64;
+        const maxTop = window.innerHeight - 64;
+        return {
+          left: Math.min(pos.left, maxLeft),
+          top: Math.min(pos.top, maxTop),
+        };
+      });
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    function handleMouseMove(e: MouseEvent) {
+      if (!draggingRef.current) return;
+      e.preventDefault();
+      const newLeft = e.clientX - offsetRef.current.x;
+      const newTop = e.clientY - offsetRef.current.y;
+      const maxLeft = window.innerWidth - 64;
+      const maxTop = window.innerHeight - 64;
+      setPosition({
+        left: Math.min(Math.max(0, newLeft), maxLeft),
+        top: Math.min(Math.max(0, newTop), maxTop),
+      });
+    }
+
+    function handleMouseUp() {
+      draggingRef.current = false;
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  // Touch event handlers for mobile dragging
+  useEffect(() => {
+    function handleTouchMove(e: TouchEvent) {
+      if (!draggingRef.current) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const newLeft = touch.clientX - offsetRef.current.x;
+      const newTop = touch.clientY - offsetRef.current.y;
+      const maxLeft = window.innerWidth - 64;
+      const maxTop = window.innerHeight - 64;
+      setPosition({
+        left: Math.min(Math.max(0, newLeft), maxLeft),
+        top: Math.min(Math.max(0, newTop), maxTop),
+      });
+    }
+
+    function handleTouchEnd() {
+      draggingRef.current = false;
+    }
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+    window.addEventListener("touchcancel", handleTouchEnd);
+    return () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      window.removeEventListener("touchcancel", handleTouchEnd);
+    };
+  }, []);
+
+  function handleMouseDown(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (!iconRef.current) return;
+    draggingRef.current = true;
+    const rect = iconRef.current.getBoundingClientRect();
+    offsetRef.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }
+  function handleTouchStart(e: React.TouchEvent<HTMLAnchorElement>) {
+    if (!iconRef.current) return;
+    draggingRef.current = true;
+    const rect = iconRef.current.getBoundingClientRect();
+    const touch = e.touches[0];
+    offsetRef.current = {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top,
+    };
+  }
 
   // Onboarding: Only show for first-time users
   React.useEffect(() => {
@@ -73,10 +166,29 @@ function Router() {
       </React.Suspense>
       {/* Show bottom navigation only for authenticated users */}
       {!isLoading && isAuthenticated && <BottomNavigation />}
+      {/* Floating Message Icon Button - draggable */}
+      {!isLoading && isAuthenticated && (
+        <a
+          href="/message"
+          ref={iconRef}
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+          className="fixed z-50 flex items-center justify-center w-16 h-16 rounded-full bg-[#e3e6ee] shadow-lg hover:bg-[#d1d5db] transition-all"
+          style={{
+            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+            top: position.top,
+            left: position.left,
+            cursor: 'grab',
+          }}
+          aria-label="Messages"
+        >
+          {/* Message Icon (msg.png) */}
+          <img src="/msg.png" alt="Messages" className="w-full h-full object-cover" />
+        </a>
+      )}
     </div>
   );
 }
-
 
 function App() {
   return (
