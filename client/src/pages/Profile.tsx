@@ -211,23 +211,33 @@ export default function Profile() {
                 <Building2 className="w-5 h-5 text-gray-500" />
                 <div>
           {/* Stylish Full Name Edit Bar */}
-          <form onSubmit={handleFullNameSubmit} className="mb-8 flex flex-col items-center gap-4">
-            <label htmlFor="edit-fullname" className="text-lg font-semibold text-gray-700 dark:text-gray-200">Edit Full Name</label>
-            <div className="flex w-full max-w-md items-center bg-white/80 dark:bg-gray-800/80 rounded-xl shadow-lg px-4 py-2">
+          <form 
+            onSubmit={handleFullNameSubmit} 
+            className="mb-8 flex flex-col items-center justify-center gap-4 w-full px-2 sm:px-0"
+            style={{ width: '100%' }}
+          >
+            <label htmlFor="edit-fullname" className="text-lg font-semibold text-gray-700 dark:text-gray-200 text-center w-full">Edit Full Name</label>
+            <div className="flex flex-col items-center w-full max-w-md bg-white/80 dark:bg-gray-800/80 rounded-xl shadow-lg px-2 py-2 sm:px-4 sm:py-2 mx-auto">
               <input
                 id="edit-fullname"
                 type="text"
                 value={editFullName}
                 onChange={e => setEditFullName(e.target.value)}
-                className="flex-1 bg-transparent outline-none text-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 font-medium"
+                className="w-full bg-transparent outline-none text-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 font-medium px-2 py-2 text-center"
                 placeholder="Enter your full name"
                 disabled={isSubmitting}
                 required
+                style={{ minWidth: 0 }}
               />
+              <Button 
+                type="submit" 
+                disabled={isSubmitting || !editFullName.trim()} 
+                className="w-full mt-3 px-6 py-2 font-bold text-lg bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 text-white rounded-xl shadow-md hover:scale-[1.03] transition-all duration-200"
+                style={{ marginTop: '0.75rem' }}
+              >
+                {isSubmitting ? "Saving..." : "Submit"}
+              </Button>
             </div>
-            <Button type="submit" disabled={isSubmitting || !editFullName.trim()} className="w-full mt-2 px-6 py-2 font-bold text-lg bg-gradient-to-br from-pink-500 via-purple-500 to-indigo-500 text-white rounded-xl shadow-md hover:scale-[1.03] transition-all duration-200">
-              {isSubmitting ? "Saving..." : "Submit"}
-            </Button>
             {successMsg && <div className="text-green-600 font-semibold">{successMsg}</div>}
             {errorMsg && <div className="text-red-600 font-semibold">{errorMsg}</div>}
           </form>
