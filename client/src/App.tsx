@@ -130,9 +130,9 @@ function Router() {
     if (!isLoading && isAuthenticated && user) {
       if (location === "/" || location === "/landing" || location === "/onboarding") {
         if (userRole === "admin") {
-          setLocation("/admin-dashboard", { replace: true });
-        } else {
-          setLocation("/user-dashboard", { replace: true });
+          setTimeout(() => setLocation("/admin-dashboard", { replace: true }), 0);
+        } else if (userRole === "user") {
+          setTimeout(() => setLocation("/user-dashboard", { replace: true }), 0);
         }
       }
     }
