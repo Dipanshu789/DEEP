@@ -147,7 +147,10 @@ function Router() {
         <Switch>
           <Route path="/onboarding" component={Onboarding} />
           {isLoading || !isAuthenticated ? (
-            <Route path="/" component={Landing} />
+            <>
+              <Route path="/" component={Landing} />
+              <Route path="/landing" component={Landing} />
+            </>
           ) : (
             <>
               <Route path="/" component={Home} />
