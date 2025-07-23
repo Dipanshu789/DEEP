@@ -58,9 +58,15 @@ export default function Landing() {
       const res = await fetch("/api/auth/user", { credentials: "include" });
       if (res.ok) {
         const user = await res.json();
-        if (user.role === "admin") setLocation("/admin-dashboard");
-        else if (user.role === "user") setLocation("/user-dashboard");
-        else window.location.reload();
+        if (user.role === "admin") {
+          setLocation("/admin-dashboard");
+          window.location.replace("/admin-dashboard");
+        } else if (user.role === "user") {
+          setLocation("/user-dashboard");
+          window.location.replace("/user-dashboard");
+        } else {
+          window.location.reload();
+        }
       } else {
         window.location.reload();
       }
