@@ -1,4 +1,3 @@
-
 import React, { useCallback } from "react";
 import { useLocation } from "wouter";
 import { onboardingData } from "./onboardingData";
@@ -27,7 +26,7 @@ export default function Onboarding() {
       setScreen(screen + 1);
     } else {
       localStorage.setItem("hasSeenOnboarding", "true");
-      window.location.href = "http://localhost:5000";
+      window.location.href = window.location.origin + "/landing";
     }
   }, [screen, setLocation]);
 
@@ -159,3 +158,4 @@ export default function Onboarding() {
     </div>
   );
 }
+
