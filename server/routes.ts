@@ -364,6 +364,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (company.adminId) {
         admin = await storage.getUser(company.adminId);
       }
+      // Fetch geofence for this company
+      let geofence = null;
+      if (company.companyCode) {
+        geofence = await storage.getGeofenceByCompanyCode(company.companyCode);
+      }
       res.json({
         ...company,
         admin: admin
@@ -373,7 +378,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               email: admin.email || null,
               profileImageUrl: admin.profileImageUrl || null
             }
-          : null
+          : null,
+        geofenceLatitude: geofence ? parseFloat(geofence.latitude) : null,
+        geofenceLongitude: geofence ? parseFloat(geofence.longitude) : null,
+        geofenceMarker: geofence && company ? {
+          lat: parseFloat(geofence.latitude),
+          lng: parseFloat(geofence.longitude),
+          name: company.name
+        } : null
       });
     } catch (error) {
       console.error("Error fetching company:", error);
