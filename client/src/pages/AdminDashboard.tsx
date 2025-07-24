@@ -89,6 +89,18 @@ export default function AdminDashboard() {
     enabled: !!user && user?.role === "admin" && !!user.companyCode,
   });
 
+  // Fetch company info for map center (geofenceLatitude, geofenceLongitude)
+  const { data: companyInfo } = useQuery({
+    queryKey: ["/api/company", user?.companyCode],
+    queryFn: async () => {
+      if (!user?.companyCode) return null;
+      const res = await fetch(`/api/company/${user.companyCode}`);
+      if (!res.ok) throw new Error("Failed to fetch company info");
+      return await res.json();
+    },
+    enabled: !!user && !!user.companyCode,
+  });
+
   const handleLogout = async () => {
     await fetch("/api/logout", { credentials: "include" });
     queryClient.removeQueries({ queryKey: ["/api/auth/user"] });
@@ -277,20 +289,23 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="relative rounded-lg h-64 mb-4 overflow-hidden" style={{ minHeight: 256 }}>
-                <GoogleMapView
-                  // TODO: Replace with real employee coordinates if available
-                  markers={employees
-                    .filter((emp): emp is User & { latitude: number; longitude: number } => 
-                      typeof emp.latitude === "number" && typeof emp.longitude === "number"
-                    )
-                    .map(emp => ({
-                      lat: emp.latitude,
-                      lng: emp.longitude,
-                      label: emp.fullName ?? undefined
-                    }))}
-                  center={{ lat: 28.6139, lng: 77.209 }} // Default to Delhi, India
-                  zoom={12}
-                />
+                {companyInfo && companyInfo.geofenceLatitude != null && companyInfo.geofenceLongitude != null ? (
+                  <GoogleMapView
+                    markers={companyInfo && companyInfo.geofenceMarker ? [
+                      {
+                        lat: companyInfo.geofenceMarker.lat,
+                        lng: companyInfo.geofenceMarker.lng,
+                        label: companyInfo.geofenceMarker.name
+                      }
+                    ] : []}
+                    center={{ lat: companyInfo.geofenceLatitude, lng: companyInfo.geofenceLongitude }}
+                    zoom={15}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500">
+                    Geofence location not set for this company.
+                  </div>
+                )}
               </div>
               <div className="text-sm text-gray-600">
                 <div className="flex items-center justify-between">
