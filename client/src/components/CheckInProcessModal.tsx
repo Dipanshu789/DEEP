@@ -412,52 +412,51 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
   const StepIcon = currentStepData.icon;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="w-full flex justify-center" style={{ marginBottom: '8vh' }}>
-        <Card className="max-w-md w-full">
-          <CardContent className="p-6">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Check-In Process</h2>
-            <div className="text-primary font-medium">Step {currentStep} of 3</div>
-          </div>
-
-          <div className="text-center mb-6">
-            <StepIcon className="mx-auto text-6xl text-primary mb-4 h-16 w-16" />
-            <h3 className="text-xl font-semibold mb-4">{currentStepData.title}</h3>
-            <p className="text-gray-600 mb-6">{currentStepData.description}</p>
-            
-            {currentStepData.content}
-
-            <div className="mt-4">
-              <div className="text-sm text-gray-600 mb-2">
-                {currentStep === 1 ? "Face Match Progress" :
-                 currentStep === 2 ? "Location Check" :
-                 "Tracking Setup"}
-              </div>
-              <Progress value={progress} className="w-full" />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="w-full flex justify-center items-end min-h-screen" style={{ marginBottom: '20vh' }}>
+        <Card className="max-w-md w-full relative flex flex-col" style={{ minHeight: '80vh', maxHeight: '95vh' }}>
+          <CardContent className="p-4 sm:p-6 flex flex-col h-full" style={{ paddingBottom: 0 }}>
+            <div className="text-center mb-4 sm:mb-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Check-In Process</h2>
+              <div className="text-primary font-medium">Step {currentStep} of 3</div>
             </div>
-          </div>
 
-          <div className="flex space-x-3">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              disabled={checkInMutation.isPending}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleStepComplete}
-              disabled={checkInMutation.isPending}
-              className="flex-1 btn-secondary"
-            >
-              {checkInMutation.isPending ? "Processing..." :
-               currentStep === 3 ? "Complete Check-In" :
-               currentStep === 1 ? "Verify Face" :
-               "Verify Location"}
-            </Button>
-          </div>
+            <div className="text-center mb-4 sm:mb-6 flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+              <StepIcon className="mx-auto text-6xl text-primary mb-4 h-16 w-16" />
+              <h3 className="text-xl font-semibold mb-4">{currentStepData.title}</h3>
+              <p className="text-gray-600 mb-6">{currentStepData.description}</p>
+              {currentStepData.content}
+              <div className="mt-4">
+                <div className="text-sm text-gray-600 mb-2">
+                  {currentStep === 1 ? "Face Match Progress" :
+                   currentStep === 2 ? "Location Check" :
+                   "Tracking Setup"}
+                </div>
+                <Progress value={progress} className="w-full" />
+              </div>
+            </div>
+
+            {/* Sticky button bar for mobile */}
+            <div className="w-full bg-white pt-2 pb-2 px-0 sm:px-0 flex space-x-3 sticky bottom-0 left-0 z-10 border-t border-gray-200" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.03)' }}>
+              <Button
+                variant="outline"
+                onClick={onClose}
+                disabled={checkInMutation.isPending}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleStepComplete}
+                disabled={checkInMutation.isPending}
+                className="flex-1 btn-secondary"
+              >
+                {checkInMutation.isPending ? "Processing..." :
+                 currentStep === 3 ? "Complete Check-In" :
+                 currentStep === 1 ? "Verify Face" :
+                 "Verify Location"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
