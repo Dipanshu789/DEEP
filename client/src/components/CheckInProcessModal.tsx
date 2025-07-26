@@ -384,10 +384,23 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
               </div>
             )}
           </div>
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="text-green-800 text-sm">✓ GPS coordinates verified</p>
-            <p className="text-green-800 text-sm">✓ Within office geofence boundary</p>
-            <p className="text-green-800 text-sm">✓ Location accuracy: High</p>
+          {/* Buttons directly below the map for location step */}
+          <div className="w-full flex space-x-3 mt-2">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              disabled={checkInMutation.isPending}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleStepComplete}
+              disabled={checkInMutation.isPending}
+              className="flex-1 btn-secondary"
+            >
+              {checkInMutation.isPending ? "Processing..." : "Verify Location"}
+            </Button>
           </div>
         </div>
       ),
@@ -436,27 +449,29 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
               </div>
             </div>
 
-            {/* Sticky button bar for mobile */}
-            <div className="w-full bg-white pt-2 pb-2 px-0 sm:px-0 flex space-x-3 sticky bottom-0 left-0 z-10 border-t border-gray-200" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.03)' }}>
-              <Button
-                variant="outline"
-                onClick={onClose}
-                disabled={checkInMutation.isPending}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleStepComplete}
-                disabled={checkInMutation.isPending}
-                className="flex-1 btn-secondary"
-              >
-                {checkInMutation.isPending ? "Processing..." :
-                 currentStep === 3 ? "Complete Check-In" :
-                 currentStep === 1 ? "Verify Face" :
-                 "Verify Location"}
-              </Button>
-            </div>
+            {/* Sticky button bar for mobile, only for steps 1 and 3 */}
+            {currentStep !== 2 && (
+              <div className="w-full bg-white pt-2 pb-2 px-0 sm:px-0 flex space-x-3 sticky bottom-0 left-0 z-10 border-t border-gray-200" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.03)' }}>
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={checkInMutation.isPending}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleStepComplete}
+                  disabled={checkInMutation.isPending}
+                  className="flex-1 btn-secondary"
+                >
+                  {checkInMutation.isPending ? "Processing..." :
+                   currentStep === 3 ? "Complete Check-In" :
+                   currentStep === 1 ? "Verify Face" :
+                   "Verify Location"}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
