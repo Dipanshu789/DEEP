@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Eye, MapPin, Satellite, User, Check } from "lucide-react";
+import GoogleMapView from "@/components/GoogleMapView";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -45,6 +46,63 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
   if (user?.role === 'admin') {
     return null;
   }
+
+  // State for user and company location
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [companyLocation, setCompanyLocation] = useState<{ lat: number; lng: number; name: string } | null>(null);
+
+  // Fetch company geofence location on mount
+  useEffect(() => {
+    async function fetchCompanyLocation() {
+      if (!user?.companyCode) return;
+      try {
+        const res = await fetch(`/api/company/${user.companyCode}`);
+        const data = await res.json();
+        if (data && data.geofenceLatitude && data.geofenceLongitude && data.name) {
+          setCompanyLocation({ lat: data.geofenceLatitude, lng: data.geofenceLongitude, name: data.name });
+        }
+      } catch {}
+    }
+    fetchCompanyLocation();
+  }, [user?.companyCode]);
+
+  // Robustly fetch user location when entering location step
+  useEffect(() => {
+    let isMounted = true;
+    let attempts = 0;
+    const maxAttempts = 3;
+    const getLocation = () => {
+      if (!navigator.geolocation) {
+        setUserLocation(null);
+        setCameraError("Geolocation is not supported by your browser.");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (isMounted) {
+            setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            setCameraError("");
+          }
+        },
+        (err) => {
+          attempts++;
+          if (attempts < maxAttempts) {
+            setTimeout(getLocation, 1000);
+          } else {
+            if (isMounted) {
+              setUserLocation(null);
+              setCameraError("Unable to get precise GPS location. Please enable GPS and try again.");
+            }
+          }
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    };
+    if (currentStep === 2) {
+      getLocation();
+    }
+    return () => { isMounted = false; };
+  }, [currentStep]);
   const checkInMutation = useMutation({
     mutationFn: async ({ latitude, longitude, faceData, faceDescriptor }: { latitude: number; longitude: number; faceData: string; faceDescriptor: number[] }) => {
       if (!user?.companyCode) {
@@ -298,6 +356,34 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
       description: "Checking if you're within the office area",
       content: (
         <div>
+          <div style={{ width: '100%', height: 300, marginBottom: 16 }}>
+            {companyLocation && userLocation ? (
+              <GoogleMapView
+                center={companyLocation}
+                zoom={16}
+                markers={[
+                  {
+                    lat: companyLocation.lat,
+                    lng: companyLocation.lng,
+                    label: companyLocation.name,
+                    iconUrl: "https://cdn-icons-png.flaticon.com/512/616/616494.png",
+                    iconSize: { width: 40, height: 40 }
+                  },
+                  {
+                    lat: userLocation.lat,
+                    lng: userLocation.lng,
+                    label: user?.fullName || "You",
+                    iconUrl: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+                    iconSize: { width: 36, height: 36 }
+                  }
+                ]}
+              />
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                {cameraError ? cameraError : "Loading map and locations..."}
+              </div>
+            )}
+          </div>
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <p className="text-green-800 text-sm">✓ GPS coordinates verified</p>
             <p className="text-green-800 text-sm">✓ Within office geofence boundary</p>
@@ -327,8 +413,9 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="max-w-md w-full">
-        <CardContent className="p-6">
+      <div className="w-full flex justify-center" style={{ marginBottom: '8vh' }}>
+        <Card className="max-w-md w-full">
+          <CardContent className="p-6">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Check-In Process</h2>
             <div className="text-primary font-medium">Step {currentStep} of 3</div>
@@ -371,8 +458,9 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
                "Verify Location"}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
