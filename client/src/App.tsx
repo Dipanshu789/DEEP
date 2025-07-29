@@ -141,11 +141,13 @@ function Router() {
   // Fix: Use static import for Onboarding page to avoid require error
   const Onboarding = React.lazy(() => import("@/pages/Onboarding"));
 
+  const ResetPassword = React.lazy(() => import("@/pages/reset-password"));
   return (
     <div className="relative">
       <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
         <Switch>
           <Route path="/onboarding" component={Onboarding} />
+          <Route path="/reset-password" component={ResetPassword} />
           {isLoading || !isAuthenticated ? (
             <>
               <Route path="/" component={Landing} />
