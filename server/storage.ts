@@ -1,11 +1,26 @@
 import { db } from "./db";
 import { eq, and, or } from "drizzle-orm";
 import {
-  users, companies, geofences, attendanceLogs, messages,
+  users, companies, geofences, attendanceLogs, messages, passwordResets,
   type InsertUser, type User, type InsertCompany, type Company, type InsertGeofence, type Geofence, type InsertAttendanceLog, type AttendanceLog, type InsertMessage, type Message
 } from "@shared/schema";
 
 export class PostgresStorage {
+  // Create a password reset token
+  async createPasswordResetToken(userId: string, token: string, expiresAt: Date) {
+    await db.insert(passwordResets).values({ userId, token, expiresAt }).returning();
+  }
+
+  // Get a password reset token
+  async getPasswordResetToken(token: string) {
+    const [row] = await db.select().from(passwordResets).where(eq(passwordResets.token, token));
+    return row;
+  }
+
+  // Delete a password reset token
+  async deletePasswordResetToken(token: string) {
+    await db.delete(passwordResets).where(eq(passwordResets.token, token));
+  }
   // Find a company by company code (for fallback in check-in)
   async getCompanyByUserCompanyCode(companyCode: string): Promise<Company | undefined> {
     const code = companyCode ? companyCode.toUpperCase() : companyCode;
