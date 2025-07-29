@@ -1,3 +1,11 @@
+// Password reset tokens table
+export const passwordResets = pgTable("password_resets", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  token: varchar("token").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 import {
   pgTable,
   text,
