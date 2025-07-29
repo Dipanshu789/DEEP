@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import WelcomeIllustration from "./assets/welcome-illustration.png";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import ForgotPasswordModal from "@/components/ForgotPasswordModal";
 import SplashScreen from "@/components/SplashScreen";
 import FaceCaptureModal from "@/components/FaceCaptureModal";
 import CompanyRegistration from "@/components/CompanyRegistration";
@@ -15,6 +16,7 @@ type LandingStep = "splash" | "welcome" | "face-capture" | "company-registration
 type UserRole = "admin" | "user" | null;
 
 export default function Landing() {
+  const [showForgot, setShowForgot] = useState(false);
   const [currentStep, setCurrentStep] = useState<LandingStep>("splash");
   const [activeTab, setActiveTab] = useState<"login" | "signup">("login");
   const [userRole, setUserRole] = useState<UserRole>(null);
@@ -228,6 +230,15 @@ export default function Landing() {
                     />
                     <label className="text-gray-500">Password</label>
                   </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="text-blue-600 text-sm hover:underline"
+                      onClick={() => setShowForgot(true)}
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
                   {loginError && <div className="text-red-500 text-center mb-2">{loginError}</div>}
                   <Button
                     onClick={handleLogin}
@@ -235,6 +246,7 @@ export default function Landing() {
                   >
                     Login
                   </Button>
+                  <ForgotPasswordModal isOpen={showForgot} onClose={() => setShowForgot(false)} />
                 </div>
               )}
 
