@@ -79,7 +79,6 @@ export default function ResetPasswordPage() {
             style={{ width: "100%", padding: 8, marginBottom: 8 }}
             autoComplete="new-password"
             inputMode="text"
-            onTouchStart={e => e.currentTarget.focus()}
           />
           <div style={{ position: "relative" }}>
             <input
@@ -90,12 +89,10 @@ export default function ResetPasswordPage() {
               style={{ width: "100%", padding: 8, paddingRight: 36 }}
               autoComplete="new-password"
               inputMode="text"
-              onTouchStart={e => e.currentTarget.focus()}
             />
             <button
               type="button"
               onMouseDown={e => e.preventDefault()}
-              onTouchStart={e => e.preventDefault()}
               onClick={() => setShowConfirm(v => !v)}
               style={{
                 position: "absolute",
@@ -112,7 +109,6 @@ export default function ResetPasswordPage() {
                 margin: 0,
                 zIndex: 2
               }}
-              tabIndex={-1}
               aria-label={showConfirm ? "Hide password" : "Show password"}
             >
               {showConfirm ? "👁️" : "👁️‍🗨️"}
