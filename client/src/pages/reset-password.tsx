@@ -77,6 +77,8 @@ export default function ResetPasswordPage() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             style={{ width: "100%", padding: 8, marginBottom: 8 }}
+            autoComplete="new-password"
+            inputMode="text"
           />
           <div style={{ position: "relative" }}>
             <input
@@ -85,8 +87,11 @@ export default function ResetPasswordPage() {
               value={confirm}
               onChange={e => setConfirm(e.target.value)}
               style={{ width: "100%", padding: 8, paddingRight: 36 }}
+              autoComplete="off"
+              inputMode="text"
             />
-            <span
+            <button
+              type="button"
               onClick={() => setShowConfirm(v => !v)}
               style={{
                 position: "absolute",
@@ -96,12 +101,18 @@ export default function ResetPasswordPage() {
                 cursor: "pointer",
                 userSelect: "none",
                 fontSize: 18,
-                color: "#888"
+                color: "#888",
+                background: "none",
+                border: "none",
+                padding: 0,
+                margin: 0,
+                zIndex: 2
               }}
-              title={showConfirm ? "Hide password" : "Show password"}
+              tabIndex={-1}
+              aria-label={showConfirm ? "Hide password" : "Show password"}
             >
               {showConfirm ? "👁️" : "👁️‍🗨️"}
-            </span>
+            </button>
           </div>
         </div>
         <button type="submit" disabled={loading} style={{ width: "100%", padding: 10 }}>
