@@ -71,54 +71,24 @@ export default function ResetPasswordPage() {
       <h2 style={{ textAlign: "center" }}>Reset Password</h2>
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ position: "relative", marginBottom: 8 }}>
-            <input
-              type={showConfirm ? "text" : "password"}
-              placeholder="New password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              style={{ width: "100%", padding: 8, paddingRight: 44, transition: 'box-shadow 0.2s' }}
-              autoComplete="new-password"
-              inputMode="text"
-              spellCheck={false}
-            />
-            <button
-              type="button"
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => setShowConfirm(v => !v)}
-              style={{
-                position: "absolute",
-                right: 8,
-                top: "50%",
-                transform: "translateY(-50%) scale(1)",
-                cursor: "pointer",
-                userSelect: "none",
-                fontSize: 22,
-                color: showConfirm ? "#007bff" : "#888",
-                background: "none",
-                border: "none",
-                padding: 0,
-                margin: 0,
-                zIndex: 10,
-                pointerEvents: "auto",
-                transition: "color 0.2s, transform 0.2s"
-              }}
-              tabIndex={-1}
-              aria-label={showConfirm ? "Hide password" : "Show password"}
-            >
-              {showConfirm ? "👁️" : "👁️‍🗨️"}
-            </button>
-          </div>
+          <input
+            type="password"
+            placeholder="New password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            style={{ width: "100%", padding: 8, marginBottom: 8 }}
+            autoComplete="new-password"
+            inputMode="text"
+          />
           <div style={{ position: "relative" }}>
             <input
               type={showConfirm ? "text" : "password"}
               placeholder="Confirm password"
               value={confirm}
               onChange={e => setConfirm(e.target.value)}
-              style={{ width: "100%", padding: 8, paddingRight: 44, transition: 'box-shadow 0.2s' }}
+              style={{ width: "100%", padding: 8, paddingRight: 36 }}
               autoComplete="new-password"
               inputMode="text"
-              spellCheck={false}
             />
             <button
               type="button"
@@ -128,18 +98,16 @@ export default function ResetPasswordPage() {
                 position: "absolute",
                 right: 8,
                 top: "50%",
-                transform: "translateY(-50%) scale(1)",
+                transform: "translateY(-50%)",
                 cursor: "pointer",
                 userSelect: "none",
-                fontSize: 22,
-                color: showConfirm ? "#007bff" : "#888",
+                fontSize: 18,
+                color: "#888",
                 background: "none",
                 border: "none",
                 padding: 0,
                 margin: 0,
-                zIndex: 10,
-                pointerEvents: "auto",
-                transition: "color 0.2s, transform 0.2s"
+                zIndex: 2
               }}
               tabIndex={-1}
               aria-label={showConfirm ? "Hide password" : "Show password"}
