@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import passImg from "../../public/pass.png";
 
@@ -8,8 +8,12 @@ export default function ResetPasswordPage() {
   const [confirm, setConfirm] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [location] = useLocation();
+  
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
 
   // Extract token from URL
   const params = new URLSearchParams(window.location.search);
@@ -97,7 +101,7 @@ export default function ResetPasswordPage() {
               style={{
                 position: "absolute",
                 right: 8,
-                top: "50%",
+                top: "50%", 
                 transform: "translateY(-50%)",
                 cursor: "pointer",
                 userSelect: "none",
