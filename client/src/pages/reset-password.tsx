@@ -9,6 +9,8 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const passwordRef = useRef(null);
+  const confirmRef = useRef(null);
 
   // Extract token from URL
   const params = new URLSearchParams(window.location.search);
@@ -69,11 +71,11 @@ export default function ResetPasswordPage() {
       </div>
       <h2 style={{ textAlign: "center" }}>Reset Password</h2>
       {message && <div style={{ color: "red", marginBottom: 12, textAlign: "center" }}>{message}</div>}
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} autoComplete="off">
         <div style={{ marginBottom: 16 }}>
           <div style={{ position: "relative", marginBottom: 16 }}>
             <input
-              ref={useRef(null)}
+              ref={passwordRef}
               type={showPassword ? "text" : "password"}
               placeholder="New password"
               value={password}
@@ -84,9 +86,8 @@ export default function ResetPasswordPage() {
             />
             <button
               type="button"
-              onTouchStart={e => e.preventDefault()}
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => setShowPassword(!showPassword)}
+              tabIndex={-1}
+              onClick={() => setShowPassword(v => !v)}
               style={{
                 position: "absolute",
                 right: 12,
@@ -107,7 +108,7 @@ export default function ResetPasswordPage() {
           </div>
           <div style={{ position: "relative" }}>
             <input
-              ref={useRef(null)}
+              ref={confirmRef}
               type={showConfirm ? "text" : "password"}
               placeholder="Confirm password"
               value={confirm}
@@ -118,9 +119,8 @@ export default function ResetPasswordPage() {
             />
             <button
               type="button"
-              onTouchStart={e => e.preventDefault()}
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => setShowConfirm(!showConfirm)}
+              tabIndex={-1}
+              onClick={() => setShowConfirm(v => !v)}
               style={{
                 position: "absolute",
                 right: 12,
