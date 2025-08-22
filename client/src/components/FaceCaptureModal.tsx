@@ -1,7 +1,7 @@
 // (imports remain unchanged)
 import { useState, useRef, useEffect } from "react";
 import * as faceapi from "face-api.js";
-import { getEAR, detectBlink } from "@/lib/blinkDetection";
+//import { getEAR, detectBlink } from "@/lib/blinkDetection";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ interface FaceCaptureModalProps {
     name: string;
     email: string;
     password: string;
-    role: "admin" | "user";
+    role: "admin" | "user" | "remote_user";
   };
   userId: string;
   onComplete: () => void;
