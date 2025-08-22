@@ -3,10 +3,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AttendanceLog, User as BaseUser } from "@shared/schema";
 
-// Extend User type to include latitude and longitude for map markers
+// Extend User type to include latitude, longitude, lastUpdated, and route for map markers
 type User = BaseUser & {
   latitude?: number;
   longitude?: number;
+  lastUpdated?: string | Date | null;
+  route?: { lat: number; lng: number }[]; // Add route property
+  speed?: number | null; // Add speed property
+  status?: string; // Add status property
 };
 import { Clock, UserCheck, UserX, AlertCircle, TrendingUp, Download, Filter } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,22 +25,59 @@ import React from "react";
 import AttendanceDonutChart from "@/components/ui/AttendanceDonutChart";
 
 export default function AdminDashboard() {
+  // Handler to trigger backend cleanup of old live locations
+  const handleCleanupLiveLocations = async () => {
+    try {
+      const res = await fetch("/api/live-locations/cleanup", { method: "DELETE" });
+      if (res.ok) {
+        alert("Old live location data deleted successfully.");
+        // Optionally refresh live locations
+        const refreshed = await fetch("/api/live-locations");
+        if (refreshed.ok) setLiveLocations(await refreshed.json());
+      } else {
+        alert("Failed to delete old live location data.");
+      }
+    } catch {
+      alert("Error deleting old live location data.");
+    }
+  };
   const queryClient = useQueryClient();
+  const [liveLocations, setLiveLocations] = useState<any[]>([]);
   useEffect(() => {
-    // Only run once on mount
     const socket = io("http://localhost:5000", { transports: ["websocket"] });
-    // Socket connection for attendance updates (no sensitive logging)
-    socket.on("connect", () => {
-      // Connected
-    });
+    let intervalId: NodeJS.Timeout | null = null;
+    socket.on("connect", () => {});
     socket.on("attendanceUpdated", (data: { companyCode: string; userId: string }) => {
-      // Invalidate with correct query keys (must match useQuery)
       queryClient.invalidateQueries({ queryKey: ["/api/attendance/company", data.companyCode] });
       queryClient.invalidateQueries({ queryKey: ["/api/company/employees", data.companyCode] });
       queryClient.invalidateQueries({ queryKey: ["/api/attendance/user", data.userId] });
     });
-    return () => { socket.disconnect(); };
-  }, []); // Only on mount
+    socket.on("adminLocationUpdate", (locations: any[]) => {
+      setLiveLocations(locations);
+    });
+    // Only poll /api/live-locations if there is at least one live location
+    const pollLiveLocations = async () => {
+      try {
+        const res = await fetch("/api/live-locations");
+        if (res.ok) {
+          const data = await res.json();
+          setLiveLocations(data);
+          // If no live locations, stop polling
+          if (!data || data.length === 0) {
+            if (intervalId) clearInterval(intervalId);
+            intervalId = null;
+          }
+        }
+      } catch {}
+    };
+    // Initial poll to check if there are any live locations
+    pollLiveLocations().then(() => {
+      if (liveLocations.length > 0 && !intervalId) {
+        intervalId = setInterval(pollLiveLocations, 5000);
+      }
+    });
+    return () => { socket.disconnect(); if (intervalId) clearInterval(intervalId); };
+  }, [queryClient]);
   const { user } = useAuth() as { user?: User };
 
 
@@ -274,9 +315,9 @@ export default function AdminDashboard() {
         {/* Modern Donut Chart Card */}
         <div className="w-full flex flex-col items-center justify-center mb-8">
           <AttendanceDonutChart
-            total={teamMembers.length}
-            present={presentCount}
-            absent={absentCount}
+            total={teamMembers.filter((m: User) => m.role === 'user' || m.role === 'remote_user').length}
+            present={todayAttendance.filter((log: any) => (log.status === "present" || log.checkInTime) && (log.role === 'user' || log.role === 'remote_user')).length}
+            absent={Math.max(0, teamMembers.filter((m: User) => m.role === 'user' || m.role === 'remote_user').length - todayAttendance.filter((log: any) => (log.status === "present" || log.checkInTime) && (log.role === 'user' || log.role === 'remote_user')).length)}
           />
         </div>
 
@@ -291,21 +332,51 @@ export default function AdminDashboard() {
               <div className="relative rounded-lg h-64 mb-4 overflow-hidden" style={{ minHeight: 256 }}>
                 {companyInfo && companyInfo.geofenceLatitude != null && companyInfo.geofenceLongitude != null ? (
                   <GoogleMapView
-                    markers={companyInfo && companyInfo.geofenceMarker ? [
-                      {
-                        lat: companyInfo.geofenceMarker.lat,
-                        lng: companyInfo.geofenceMarker.lng,
-                        label: companyInfo.geofenceMarker.name
-                      }
-                    ] : []}
+                    markers={[
+                      ...(companyInfo && companyInfo.geofenceMarker ? [
+                        {
+                          lat: companyInfo.geofenceMarker.lat,
+                          lng: companyInfo.geofenceMarker.lng,
+                          label: companyInfo.geofenceMarker.name ?? undefined,
+                          iconUrl: undefined,
+                          iconSize: { width: 40, height: 40 }
+                        }
+                      ] : []),
+                      // Use liveLocations from Socket.io for remote_user tracking
+                      ...liveLocations.map(loc => ({
+                        lat: loc.lat,
+                        lng: loc.lon,
+                        label: `${loc.name ?? ''}`,
+                        iconUrl: loc.profileImageUrl || loc.profileImage || '/assets/client.png',
+                        iconSize: { width: 48, height: 48 },
+                        speed: loc.speed ?? null,
+                        lastUpdated: loc.lastUpdated ?? null
+                      }))
+                    ]}
                     center={{ lat: companyInfo.geofenceLatitude, lng: companyInfo.geofenceLongitude }}
                     zoom={15}
+                    // ...existing code...
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-500">
                     Geofence location not set for this company.
                   </div>
                 )}
+              </div>
+              {/* Optionally render route, speed, last updated for each user below the map */}
+              <div className="mt-2">
+                {employees.filter(emp => typeof emp.latitude === 'number' && typeof emp.longitude === 'number').map(emp => (
+                  <div key={emp.id} className="flex items-center gap-3 mb-2">
+                    <img src={emp.profileImageUrl || '/assets/client.png'} alt={emp.fullName ?? undefined} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', border: '2px solid #e91e63', boxShadow: '0 2px 8px #0002' }} />
+                    <div>
+                      <div className="font-semibold text-gray-900 dark:text-white">{emp.fullName}</div>
+                      <div className="text-xs text-gray-500">{emp.status ?? 'Unknown'}</div>
+                      {emp.speed && <div className="text-xs text-blue-500">Speed: {emp.speed} km/h</div>}
+                      {emp.lastUpdated && <div className="text-xs text-green-500">Last updated: {typeof emp.lastUpdated === 'string' ? emp.lastUpdated : new Date(emp.lastUpdated).toLocaleTimeString()}</div>}
+                      {emp.route && emp.route.length > 1 && <div className="text-xs text-purple-500">Route points: {emp.route.length}</div>}
+                    </div>
+                  </div>
+                ))}
               </div>
               <div className="text-sm text-gray-600">
                 <div className="flex items-center justify-between">
