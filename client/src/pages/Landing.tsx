@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useRef } from "react";
 import WelcomeIllustration from "./assets/welcome-illustration.png";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,9 +14,16 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 
 type LandingStep = "splash" | "welcome" | "face-capture" | "company-registration" | "geofence-setup" | "join-company";
-type UserRole = "admin" | "user" | null;
+type UserRole = "admin" | "user" | "remote_user" | null;
 
 export default function Landing() {
+  // Helper to ensure role is never null
+  function getSafeUserData(data: typeof userData) {
+    return { ...data, role: data.role === null ? "user" : data.role };
+  }
+  // WebSocket ref for location updates
+  const wsRef = useRef<WebSocket | null>(null);
+  const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [showForgot, setShowForgot] = useState(false);
   const [currentStep, setCurrentStep] = useState<LandingStep>("splash");
   const [activeTab, setActiveTab] = useState<"login" | "signup">("login");
@@ -24,10 +32,11 @@ export default function Landing() {
     name: "",
     email: "",
     password: "",
-    role: "user" as "admin" | "user"
+    role: "user" as UserRole
   });
   const [createdUserId, setCreatedUserId] = useState<string | null>(null);
   const [signupError, setSignupError] = useState<string | null>(null);
+  const [adminCompanyCode, setAdminCompanyCode] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -66,6 +75,12 @@ export default function Landing() {
         } else if (user.role === "user") {
           setLocation("/user-dashboard");
           window.location.replace("/user-dashboard");
+        } else if (user.role === "remote_user") {
+          // Start GPS tracking for remote_user
+          const safeUserData = { ...userData, role: userData.role === null ? "user" : userData.role };
+          startRemoteUserTracking(user.userId || user.id);
+          setLocation("/user-dashboard");
+          window.location.replace("/user-dashboard");
         } else {
           window.location.reload();
         }
@@ -94,21 +109,79 @@ export default function Landing() {
         email: userData.email,
         fullName: userData.name,
         password: userData.password, // <-- send as password (not passwordHash)
-        role: userData.role,
+        role: userData.role === "remote_user" ? "user" : userData.role,
       });
       const user = await res.json();
       // Use userId from backend if present, else fallback to id
       setCreatedUserId(user.userId || user.id);
+      // If admin, show company code
+      if (user.role === "admin" && user.companyCode) {
+        setAdminCompanyCode(user.companyCode);
+      }
       setCurrentStep("face-capture");
+      if (userData.role === "remote_user") {
+        // Start GPS tracking for remote_user after signup
+        const safeUserData = { ...userData, role: userData.role === null ? "user" : userData.role };
+        startRemoteUserTracking(user.userId || user.id);
+      }
     } catch (err: any) {
       setSignupError(err.message || "Signup failed");
     }
   };
 
+  // Start GPS tracking for remote_user
+  function startRemoteUserTracking(userId: string) {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser.");
+      return;
+    }
+    // Request permission and start tracking
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        // Open WebSocket connection
+        if (!wsRef.current) {
+          wsRef.current = new WebSocket("wss://your-backend-url/ws/location");
+          wsRef.current.onopen = () => {
+            // Send initial handshake if needed
+          };
+        }
+        // Start interval for location updates
+        if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = setInterval(() => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude } = pos.coords;
+              // Send location to backend via WebSocket
+              if (wsRef.current && wsRef.current.readyState === 1) {
+                wsRef.current.send(JSON.stringify({ userId, latitude, longitude, timestamp: Date.now() }));
+              }
+            },
+            (err) => {
+              // Optionally handle error
+            },
+            { enableHighAccuracy: true }
+          );
+        }, 4000); // every 4 seconds
+      },
+      (err) => {
+        alert("Location permission denied. Remote tracking will not work.");
+      }
+    );
+  }
+
+  // Cleanup WebSocket and interval on unmount
+  useEffect(() => {
+    return () => {
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
+
   const handleFaceCapture = () => {
     if (userRole === "admin") {
       setCurrentStep("company-registration");
     } else {
+      // Both 'user' and 'remote_user' follow the same flow
       setCurrentStep("join-company");
     }
   };
@@ -122,9 +195,11 @@ export default function Landing() {
       // Defensive: should not happen, but fallback
       return <div className="p-8 text-center">User not created. Please try signing up again.</div>;
     }
+    // Only pass role as string, not null
+    const safeUserData = { ...userData, role: userData.role === null ? "user" : userData.role };
     return (
       <FaceCaptureModal
-        userData={userData}
+        userData={safeUserData}
         userId={createdUserId}
         onComplete={handleFaceCapture}
         onCancel={() => setCurrentStep("welcome")}
@@ -253,6 +328,14 @@ export default function Landing() {
               {/* Signup Form */}
               {activeTab === "signup" && (
                 <div className="space-y-4">
+                  {/* Show company code to admin after signup */}
+                  {adminCompanyCode && (
+                    <div className="bg-blue-50 border border-blue-300 rounded-lg p-4 text-center mb-2">
+                      <span className="font-semibold text-blue-700">Your Company Code:</span>
+                      <div className="text-2xl font-bold text-blue-900 mt-1">{adminCompanyCode}</div>
+                      <div className="text-xs text-gray-500 mt-2">Share this code with your team for them to join your company.</div>
+                    </div>
+                  )}
                   <div className="floating-label">
                     <input
                       type="text"
@@ -294,7 +377,7 @@ export default function Landing() {
                           name="role"
                           value="user"
                           checked={userData.role === "user"}
-                          onChange={(e) => setUserData(prev => ({ ...prev, role: e.target.value as "admin" | "user" }))}
+                          onChange={(e) => setUserData(prev => ({ ...prev, role: e.target.value as UserRole }))}
                           className="text-primary focus:ring-primary"
                         />
                         <span className="ml-2 text-gray-700">Employee</span>
@@ -305,10 +388,21 @@ export default function Landing() {
                           name="role"
                           value="admin"
                           checked={userData.role === "admin"}
-                          onChange={(e) => setUserData(prev => ({ ...prev, role: e.target.value as "admin" | "user" }))}
+                          onChange={(e) => setUserData(prev => ({ ...prev, role: e.target.value as UserRole }))}
                           className="text-primary focus:ring-primary"
                         />
                         <span className="ml-2 text-gray-700">Admin</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name="role"
+                          value="remote_user"
+                          checked={userData.role === "remote_user"}
+                          onChange={(e) => setUserData(prev => ({ ...prev, role: e.target.value as UserRole }))}
+                          className="text-primary focus:ring-primary"
+                        />
+                        <span className="ml-2 text-gray-700">Remote User</span>
                       </label>
                     </div>
                   </div>
