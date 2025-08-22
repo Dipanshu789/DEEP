@@ -92,8 +92,8 @@ export default function CompanyRegistration({ onComplete, onBack }: CompanyRegis
         </div>
             <div className="text-center mb-6">
               <Building className="mx-auto text-4xl text-primary mb-4 h-12 w-12" />
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Register Your Company</h2>
-              <p className="text-gray-600">Set up your organization details</p>
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">Register Your Company</h1>
+              <h2 className="text-red-600 ">⚠️ Important: Please enter the email which you used as your personal email (the same email you used at signup)</h2>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
