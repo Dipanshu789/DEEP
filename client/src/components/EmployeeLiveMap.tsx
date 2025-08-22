@@ -3,7 +3,7 @@ import { GoogleMap, Marker, useLoadScript } from "@react-google-maps/api";
 const mapContainerStyle = { width: "100%", height: "350px" };
 
 export default function EmployeeLiveMap({ employees }: {
-  employees: Array<{ id: string; fullName: string; lat?: number; lng?: number }>;
+  employees: Array<{ id: string; fullName: string; lat?: number; lng?: number; profileImageUrl?: string }>;
 }) {
   const { isLoaded } = useLoadScript({ googleMapsApiKey: "AIzaSyC-ml0XJ8maz8kj9nJj7F3seopwhzia09U" });
   const validEmployees = employees.filter(e => e.lat && e.lng);
@@ -18,7 +18,15 @@ export default function EmployeeLiveMap({ employees }: {
       zoom={13}
     >
       {validEmployees.map(emp => (
-        <Marker key={emp.id} position={{ lat: emp.lat!, lng: emp.lng! }} label={emp.fullName} />
+        <Marker
+          key={emp.id}
+          position={{ lat: emp.lat!, lng: emp.lng! }}
+          label={emp.fullName}
+          icon={emp.profileImageUrl ? {
+            url: emp.profileImageUrl,
+            scaledSize: new window.google.maps.Size(48, 48)
+          } : undefined}
+        />
       ))}
     </GoogleMap>
   );
