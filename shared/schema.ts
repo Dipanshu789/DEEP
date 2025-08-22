@@ -1,3 +1,19 @@
+// Live Locations table for real-time tracking
+export const liveLocations = pgTable("live_locations", {
+  userId: varchar("user_id").primaryKey().notNull(),
+  name: text("name").notNull(),
+  profileImageUrl: text("profile_picture_url"),
+  status: text("status"),
+  latitude: decimal("latitude", { precision: 10, scale: 8 }).notNull(),
+  longitude: decimal("longitude", { precision: 11, scale: 8 }).notNull(),
+  speed: decimal("speed", { precision: 8, scale: 2 }),
+  route: jsonb("route").default([]),
+  lastUpdated: timestamp("last_updated", { withTimezone: true }).defaultNow().notNull(),
+  companyCode: text("company_code"),
+});
+
+export type LiveLocation = typeof liveLocations.$inferSelect;
+export type InsertLiveLocation = typeof liveLocations.$inferInsert;
 // Password reset tokens table
 export const passwordResets = pgTable("password_resets", {
   id: serial("id").primaryKey(),
@@ -40,7 +56,7 @@ export const users = pgTable("users", {
   email: varchar("email").unique(),
   fullName: varchar("full_name"),
   profileImageUrl: varchar("profile_image_url"),
-  role: varchar("role", { enum: ["admin", "user"] }).notNull().default("user"),
+  role: varchar("role", { enum: ["admin", "user", "remote_user"] }).notNull().default("user"),
   faceData: text("face_data"), // Base64 encoded face image
   faceDescriptor: text("face_descriptor"), // JSON stringified array of face descriptor
   companyCode: varchar("company_code"),
