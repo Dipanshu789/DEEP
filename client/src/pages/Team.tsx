@@ -1,17 +1,5 @@
 import teamImg from "./assets/team.png";
-import { useEffect, useState } from "react";
-// Simple modal component for popup with blur effect
-function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/30" style={{backdropFilter: 'blur(12px) saturate(160%)'}} onClick={onClose}></div>
-      <div className="relative z-10 flex flex-col items-center justify-center p-0 bg-transparent shadow-none min-w-0 w-auto max-w-full">
-        {children}
-      </div>
-    </div>
-  );
-}
+import RemoteUserMap from "../components/RemoteUserMap";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +7,22 @@ import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
 import { Users, Clock } from "lucide-react";
 import TeamMemberActionsCard from "../components/TeamMemberActionsCard";
+import { useEffect, useState } from "react";
+// Remove this duplicate Team component definition and keep only the one below.
+// ...existing code...
+
+// Simple modal component for popup with blur effect
+function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/30" style={{backdropFilter: 'blur(12px) saturate(160%)'}} onClick={onClose}></div>
+        <div className="relative z-10 flex flex-col items-center justify-center p-0 bg-transparent shadow-none min-w-0 w-auto max-w-full">
+          {children}
+        </div>
+      </div>
+    );
+  }
 
 interface TeamMember {
   id: string;
@@ -37,6 +41,8 @@ interface AttendanceRecord {
 }
 
 export default function Team() {
+  const [showDeletePopup, setShowDeletePopup] = useState(false);
+  const [selectedToDelete, setSelectedToDelete] = useState<string[]>([]);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -48,6 +54,24 @@ export default function Team() {
     isLoading: boolean;
   };
   const { toast } = useToast();
+
+  // Add liveLocations and liveLoading state
+  const [liveLocations, setLiveLocations] = useState<any[]>([]);
+  const [liveLoading, setLiveLoading] = useState(true);
+
+  useEffect(() => {
+    setLiveLoading(true);
+    fetch("/api/live-locations")
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        setLiveLocations(Array.isArray(data) ? data : []);
+        setLiveLoading(false);
+      })
+      .catch(() => {
+        setLiveLocations([]);
+        setLiveLoading(false);
+      });
+  }, []);
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -217,7 +241,7 @@ export default function Team() {
   return (
     <div className="min-h-screen bg-[#FAFAFA] dark:bg-gray-900 pb-16">
       <div className="container mx-auto px-4 py-10 max-w-5xl flex flex-col gap-8">
-        {/* Header and Illustration */}
+  {/* Header and Illustration */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-4">
           <div className="flex-1 flex flex-col items-start md:items-start">
             <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white mb-2 tracking-tight drop-shadow-lg">Team</h1>
@@ -228,6 +252,84 @@ export default function Team() {
           </div>
         </div>
 
+        {/* Live Location Map Section */}
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight drop-shadow">Live User Locations</h2>
+          {liveLoading ? (
+            <div className="flex items-center justify-center h-40"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div></div>
+          ) : (
+            <>
+              <RemoteUserMap
+                users={liveLocations.map(loc => ({
+                  userId: loc.userId,
+                  name: loc.name,
+                  profileImageUrl: loc.profileImageUrl ?? undefined,
+                  lat: loc.lat ?? 0,
+                  lon: loc.lon ?? 0,
+                }))}
+              />
+              <div className="flex justify-center mt-6">
+                <button
+                  className="px-6 py-2 bg-red-500 text-white rounded-lg font-bold shadow hover:bg-red-600"
+                  onClick={() => setShowDeletePopup(true)}
+                >Delete Live Locations</button>
+              </div>
+              <Modal open={showDeletePopup} onClose={() => setShowDeletePopup(false)}>
+                <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg p-6 w-full max-w-md">
+                  <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Select Users to Delete</h3>
+                  <div className="space-y-2 mb-4">
+                    {liveLocations.length === 0 ? (
+                      <div className="text-gray-500">No live user locations.</div>
+                    ) : (
+                      liveLocations.map((loc) => (
+                        <label key={loc.userId} className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedToDelete.includes(loc.userId)}
+                            onChange={e => {
+                              setSelectedToDelete(prev =>
+                                e.target.checked
+                                  ? [...prev, loc.userId]
+                                  : prev.filter(id => id !== loc.userId)
+                              );
+                            }}
+                          />
+                          {loc.profileImageUrl ? (
+                            <img src={loc.profileImageUrl} alt={loc.name} className="w-8 h-8 rounded-full border-2 border-green-400" />
+                          ) : (
+                            <Avatar className="h-8 w-8 border-2 border-green-400"><AvatarFallback>{loc.name?.charAt(0).toUpperCase() || "U"}</AvatarFallback></Avatar>
+                          )}
+                          <span className="font-semibold text-gray-900 dark:text-white">{loc.name}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      className="px-4 py-2 rounded bg-gray-300 dark:bg-gray-700 text-gray-900 dark:text-white font-semibold hover:bg-gray-400 dark:hover:bg-gray-600"
+                      onClick={() => { setShowDeletePopup(false); setSelectedToDelete([]); }}
+                    >Cancel</button>
+                    <button
+                      className="px-4 py-2 rounded bg-red-500 text-white font-bold hover:bg-red-600"
+                      disabled={selectedToDelete.length === 0 || liveLoading}
+                      onClick={async () => {
+                        setLiveLoading(true);
+                        for (const id of selectedToDelete) {
+                          await fetch(`/api/live-locations/${id}`, { method: "DELETE" });
+                        }
+                        setLiveLocations(liveLocations.filter(u => !selectedToDelete.includes(u.userId)));
+                        toast({ title: "Deleted", description: `Deleted ${selectedToDelete.length} live location(s).`, variant: "default" });
+                        setShowDeletePopup(false);
+                        setSelectedToDelete([]);
+                        setLiveLoading(false);
+                      }}
+                    >Delete Selected</button>
+                  </div>
+                </div>
+              </Modal>
+            </>
+          )}
+        </div>
         {/* Team Members - Modern Card List */}
         <div className="rounded-3xl bg-white/90 dark:bg-gray-800/90 shadow-2xl backdrop-blur-lg p-8 mb-8">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight drop-shadow">Team Members</h2>
@@ -326,7 +428,8 @@ export default function Team() {
                 <div className="mb-2"><span className="font-semibold">ID:</span> {memberDetails.id}</div>
                 <div className="mb-2"><span className="font-semibold">Full Name:</span> {memberDetails.fullName || memberDetails.name}</div>
                 <div className="mb-2"><span className="font-semibold">Email:</span> {memberDetails.email}</div>
-                <div className="mb-2"><span className="font-semibold">Created At:</span> {memberDetails.createdAt && typeof memberDetails.createdAt === 'string' ? memberDetails.createdAt : (memberDetails.createdAt && memberDetails.createdAt.toString ? memberDetails.createdAt.toString() : "-")}</div>
+                <div className="mb-2"><span className="font-semibold">Role:</span> {memberDetails.role}</div>
+                <div className="mb-2"><span className="font-semibold">Created At:</span> {memberDetails.createdAt ? memberDetails.createdAt.toString() : "-"}</div>
               </div>
             ) : (
               <div className="text-gray-500">Loading...</div>
@@ -393,5 +496,4 @@ export default function Team() {
     </div>
   );
 }
-
 
