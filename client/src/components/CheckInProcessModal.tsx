@@ -18,6 +18,10 @@ interface CheckInProcessModalProps {
 }
 
 export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: CheckInProcessModalProps) {
+  // Determine if user is remote_user
+  const { user, isLoading } = useAuth() as any;
+  const isRemoteUser = user?.role === 'remote_user';
+
   const [currentStep, setCurrentStep] = useState(1);
   const [progress, setProgress] = useState(0);
   // Face detection state
@@ -32,20 +36,72 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Use standard import for useAuth (fix SSR/ESM bug)
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  // const { user, isLoading } = require("@/hooks/useAuth").useAuth();
-  // Use the hook directly:
-  // Define the expected user type with companyCode
-  interface UserWithCompanyCode {
-    companyCode?: string;
-    [key: string]: any;
+  const [profileImageUrl, setProfileImageUrl] = useState<string>("");
+  const [circularProfileImageUrl, setCircularProfileImageUrl] = useState<string>("");
+
+  // Helper to convert image to circular format using canvas
+  async function makeCircularImage(url: string, size: number = 48): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, size, size);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2, true);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(img, 0, 0, size, size);
+          ctx.restore();
+          resolve(canvas.toDataURL());
+        } else {
+          resolve(url);
+        }
+      };
+      img.onerror = function () { resolve(url); };
+      img.src = url;
+    });
   }
-  const { user, isLoading } = useAuth() as { user: UserWithCompanyCode; isLoading: boolean };
+
+  useEffect(() => {
+    async function fetchProfileImage() {
+      if (!user?.id) return;
+      try {
+        const res = await fetch(`/api/profile-image?userId=${user.id}`);
+        const data = await res.json();
+        if (data && data.url) {
+          setProfileImageUrl(data.url);
+          const circled = await makeCircularImage(data.url, 48);
+          setCircularProfileImageUrl(circled);
+        }
+      } catch {}
+    }
+    fetchProfileImage();
+  }, [user?.id]);
+
+  useEffect(() => {
+    async function fetchProfileImage() {
+      if (!user?.id) return;
+      try {
+        const res = await fetch(`/api/profile-image?userId=${user.id}`);
+        const data = await res.json();
+        if (data && data.url) setProfileImageUrl(data.url);
+      } catch {}
+    }
+    fetchProfileImage();
+  }, [user?.id]);
   // Prevent admins from using the check-in modal at all
   if (user?.role === 'admin') {
     return null;
   }
+
+  // If remote_user, skip location verification step
+  // const isRemoteUser = user?.role === 'remote_user';
 
   // State for user and company location
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -247,12 +303,40 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
         });
         return;
       }
+      // For remote users, only 2 steps: 1 (face), 2 (tracking/complete)
+      if (isRemoteUser) {
+        setCurrentStep(2);
+        setProgress(0);
+        return;
+      }
     }
-    if (currentStep < 3) {
+    // For remote users, step 2 is the last step (complete check-in)
+    if (isRemoteUser && currentStep === 2) {
+      setProgress(0);
+      (async () => {
+        try {
+          const position = await getCurrentPosition();
+          checkInMutation.mutate({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            faceData: faceImage || "",
+            faceDescriptor: faceDescriptor!,
+          });
+        } catch (error) {
+          toast({
+            title: "Error",
+            description: "Unable to get location. Please enable GPS.",
+            variant: "destructive",
+          });
+        }
+      })();
+      return;
+    }
+    // For normal users, advance steps as before
+    if (!isRemoteUser && currentStep < 3) {
       setCurrentStep(prev => prev + 1);
       setProgress(0);
-    } else {
-      // Final step - complete check-in
+    } else if (!isRemoteUser && currentStep === 3) {
       setProgress(0);
       (async () => {
         try {
@@ -290,138 +374,218 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
 
   if (!isOpen) return null;
 
-  const stepContent = [
-    {
-      icon: Eye,
-      title: "Face Verification",
-      description: "Look at the camera and ensure your face is clearly visible. No blinking required.",
-      content: (
-        <div>
-          <div className="relative bg-gray-900 rounded-lg mb-4 w-full max-w-[400px] mx-auto aspect-[4/3] flex items-center justify-center overflow-hidden">
-            {cameraError && (
-              <div className="text-red-500 text-center w-full">{cameraError}</div>
-            )}
-            {!faceImage && isCapturing && !cameraError && (
-              <video
-                ref={videoRef}
-                width={320}
-                height={240}
-                className="rounded-lg object-contain w-full h-full bg-black"
-                style={{ background: '#222' }}
-                playsInline
-                muted
-              />
-            )}
-            {/* Face status */}
-            {isCapturing && !cameraError && (
-              <div className="absolute bottom-2 left-0 right-0 flex flex-col items-center">
-                <span className={`text-sm font-medium ${faceDetected ? "text-green-400" : "text-red-400"}`}>{faceDetected ? "Face detected" : "No face detected"}</span>
-                <span className={`text-xs text-gray-400 mt-1"}`}>{faceDescriptor ? "Face ready for verification" : "Align your face in the frame"}</span>
+  // Steps: If remote_user, skip location verification
+  const stepContent = isRemoteUser
+    ? [
+        {
+          icon: Eye,
+          title: "Face Verification",
+          description: "Look at the camera and ensure your face is clearly visible. No blinking required.",
+          content: (
+            <div>
+              <div className="relative bg-gray-900 rounded-lg mb-4 w-full max-w-[400px] mx-auto aspect-[4/3] flex items-center justify-center overflow-hidden">
+                {cameraError && (
+                  <div className="text-red-500 text-center w-full">{cameraError}</div>
+                )}
+                {!faceImage && isCapturing && !cameraError && (
+                  <video
+                    ref={videoRef}
+                    width={320}
+                    height={240}
+                    className="rounded-lg object-contain w-full h-full bg-black"
+                    style={{ background: '#222' }}
+                    playsInline
+                    muted
+                  />
+                )}
+                {/* Face status */}
+                {isCapturing && !cameraError && (
+                  <div className="absolute bottom-2 left-0 right-0 flex flex-col items-center">
+                    <span className={`text-sm font-medium ${faceDetected ? "text-green-400" : "text-red-400"}`}>{faceDetected ? "Face detected" : "No face detected"}</span>
+                    <span className={`text-xs text-gray-400 mt-1"}`}>{faceDescriptor ? "Face ready for verification" : "Align your face in the frame"}</span>
+                  </div>
+                )}
+                {/* Show captured image */}
+                {faceImage && (
+                  <img src={faceImage} alt="Face" className="rounded-lg object-contain w-full h-full bg-black" />
+                )}
+                {/* Canvas for capture (hidden) */}
+                <canvas ref={canvasRef} width={320} height={240} style={{ display: "none" }} />
+                {/* Overlay */}
+                {isCapturing && !cameraError && (
+                  <div className="absolute inset-4 border-2 border-green-400 rounded-lg opacity-75 pointer-events-none"></div>
+                )}
               </div>
-            )}
-            {/* Show captured image */}
-            {faceImage && (
-              <img src={faceImage} alt="Face" className="rounded-lg object-contain w-full h-full bg-black" />
-            )}
-            {/* Canvas for capture (hidden) */}
-            <canvas ref={canvasRef} width={320} height={240} style={{ display: "none" }} />
-            {/* Overlay */}
-            {isCapturing && !cameraError && (
-              <div className="absolute inset-4 border-2 border-green-400 rounded-lg opacity-75 pointer-events-none"></div>
-            )}
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-2">
-            <Button
-              variant="outline"
-              onClick={startFaceCapture}
-              disabled={isCapturing}
-              className="flex-1"
-            >
-              {isCapturing ? "Camera On" : "Start Camera"}
-            </Button>
-            <Button
-              onClick={handleTakePhoto}
-              disabled={!isCapturing || !!cameraError || !faceDetected || !faceDescriptor}
-              className="flex-1 btn-secondary"
-            >
-              {faceDetected && faceDescriptor ? "Take Photo" : "Face required"}
-            </Button>
-          </div>
-        </div>
-      ),
-    },
-    {
-      icon: MapPin,
-      title: "Location Verification",
-      description: "Checking if you're within the office area",
-      content: (
-        <div>
-          <div style={{ width: '100%', height: 300, marginBottom: 16 }}>
-            {companyLocation && userLocation ? (
-              <GoogleMapView
-                center={companyLocation}
-                zoom={16}
-                markers={[
-                  {
-                    lat: companyLocation.lat,
-                    lng: companyLocation.lng,
-                    label: companyLocation.name,
-                    iconUrl: "https://cdn-icons-png.flaticon.com/512/616/616494.png",
-                    iconSize: { width: 40, height: 40 }
-                  },
-                  {
-                    lat: userLocation.lat,
-                    lng: userLocation.lng,
-                    label: user?.fullName || "You",
-                    iconUrl: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-                    iconSize: { width: 36, height: 36 }
-                  }
-                ]}
-              />
-            ) : (
-              <div className="text-center text-gray-500 py-8">
-                {cameraError ? cameraError : "Loading map and locations..."}
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-2">
+                <Button
+                  variant="outline"
+                  onClick={startFaceCapture}
+                  disabled={isCapturing}
+                  className="flex-1"
+                >
+                  {isCapturing ? "Camera On" : "Start Camera"}
+                </Button>
+                <Button
+                  onClick={handleTakePhoto}
+                  disabled={!isCapturing || !!cameraError || !faceDetected || !faceDescriptor}
+                  className="flex-1 btn-secondary"
+                >
+                  {faceDetected && faceDescriptor ? "Take Photo" : "Face required"}
+                </Button>
               </div>
-            )}
-          </div>
-          {/* Buttons directly below the map for location step */}
-          <div className="w-full flex space-x-3 mt-2">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              disabled={checkInMutation.isPending}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleStepComplete}
-              disabled={checkInMutation.isPending}
-              className="flex-1 btn-secondary"
-            >
-              {checkInMutation.isPending ? "Processing..." : "Verify Location"}
-            </Button>
-          </div>
-        </div>
-      ),
-    },
-    {
-      icon: Satellite,
-      title: "Start Tracking",
-      description: "Initializing background location tracking",
-      content: (
-        <div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-blue-800 text-sm">🛰️ GPS tracking enabled</p>
-            <p className="text-blue-800 text-sm">📱 Background monitoring active</p>
-            <p className="text-blue-800 text-sm">✅ Check-in process ready!</p>
-          </div>
-        </div>
-      ),
-    },
-  ];
+            </div>
+          ),
+        },
+        {
+          icon: Satellite,
+          title: "Start Tracking",
+          description: "Initializing background location tracking",
+          content: (
+            <div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-blue-800 text-sm">🛰️ GPS tracking enabled</p>
+                <p className="text-blue-800 text-sm">📱 Background monitoring active</p>
+                <p className="text-blue-800 text-sm">✅ Check-in process ready!</p>
+              </div>
+            </div>
+          ),
+        },
+      ]
+    : [
+        {
+          icon: Eye,
+          title: "Face Verification",
+          description: "Look at the camera and ensure your face is clearly visible. No blinking required.",
+          content: (
+            <div>
+              <div className="relative bg-gray-900 rounded-lg mb-4 w-full max-w-[400px] mx-auto aspect-[4/3] flex items-center justify-center overflow-hidden">
+                {cameraError && (
+                  <div className="text-red-500 text-center w-full">{cameraError}</div>
+                )}
+                {!faceImage && isCapturing && !cameraError && (
+                  <video
+                    ref={videoRef}
+                    width={320}
+                    height={240}
+                    className="rounded-lg object-contain w-full h-full bg-black"
+                    style={{ background: '#222' }}
+                    playsInline
+                    muted
+                  />
+                )}
+                {/* Face status */}
+                {isCapturing && !cameraError && (
+                  <div className="absolute bottom-2 left-0 right-0 flex flex-col items-center">
+                    <span className={`text-sm font-medium ${faceDetected ? "text-green-400" : "text-red-400"}`}>{faceDetected ? "Face detected" : "No face detected"}</span>
+                    <span className={`text-xs text-gray-400 mt-1"}`}>{faceDescriptor ? "Face ready for verification" : "Align your face in the frame"}</span>
+                  </div>
+                )}
+                {/* Show captured image */}
+                {faceImage && (
+                  <img src={faceImage} alt="Face" className="rounded-lg object-contain w-full h-full bg-black" />
+                )}
+                {/* Canvas for capture (hidden) */}
+                <canvas ref={canvasRef} width={320} height={240} style={{ display: "none" }} />
+                {/* Overlay */}
+                {isCapturing && !cameraError && (
+                  <div className="absolute inset-4 border-2 border-green-400 rounded-lg opacity-75 pointer-events-none"></div>
+                )}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-2">
+                <Button
+                  variant="outline"
+                  onClick={startFaceCapture}
+                  disabled={isCapturing}
+                  className="flex-1"
+                >
+                  {isCapturing ? "Camera On" : "Start Camera"}
+                </Button>
+                <Button
+                  onClick={handleTakePhoto}
+                  disabled={!isCapturing || !!cameraError || !faceDetected || !faceDescriptor}
+                  className="flex-1 btn-secondary"
+                >
+                  {faceDetected && faceDescriptor ? "Take Photo" : "Face required"}
+                </Button>
+              </div>
+            </div>
+          ),
+        },
+        {
+          icon: MapPin,
+          title: "Location Verification",
+          description: "Checking if you're within the office area",
+          content: (
+            <div>
+              <div style={{ width: '100%', height: 300, marginBottom: 16 }}>
+                {companyLocation && userLocation ? (
+                  <GoogleMapView
+                    center={companyLocation}
+                    zoom={16}
+                    markers={[
+                      {
+                        lat: companyLocation.lat,
+                        lng: companyLocation.lng,
+                        label: companyLocation.name,
+                        iconUrl: "https://cdn-icons-png.flaticon.com/512/616/616494.png",
+                        iconSize: { width: 40, height: 40 }
+                      },
+                      {
+                        lat: userLocation.lat,
+                        lng: userLocation.lng,
+                        label: user?.fullName || "You",
+                        iconUrl: circularProfileImageUrl || "/assets/client.png",
+                        iconSize: { width: 48, height: 48 },
+                        // Add a circular style to the marker image by using a data URL with a circular mask if needed
+                      }
+                    ]}
+                  />
+                ) : (
+                  <div className="text-center text-gray-500 py-8">
+                    {cameraError ? cameraError : "Loading map and locations..."}
+                  </div>
+                )}
+              </div>
+              {/* Buttons directly below the map for location step */}
+              <div className="w-full flex space-x-3 mt-2">
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={checkInMutation.isPending}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleStepComplete}
+                  disabled={checkInMutation.isPending}
+                  className="flex-1 btn-secondary"
+                >
+                  {checkInMutation.isPending ? "Processing..." : "Verify Location"}
+                </Button>
+              </div>
+            </div>
+          ),
+        },
+        {
+          icon: Satellite,
+          title: "Start Tracking",
+          description: "Initializing background location tracking",
+          content: (
+            <div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-blue-800 text-sm">🛰️ GPS tracking enabled</p>
+                <p className="text-blue-800 text-sm">📱 Background monitoring active</p>
+                <p className="text-blue-800 text-sm">✅ Check-in process ready!</p>
+              </div>
+            </div>
+          ),
+        },
+      ];
 
-  const currentStepData = stepContent[currentStep - 1];
+  // Prevent out-of-bounds error for currentStep
+  const safeStepIndex = Math.min(currentStep - 1, stepContent.length - 1);
+  const currentStepData = stepContent[safeStepIndex];
   const StepIcon = currentStepData.icon;
 
   return (
@@ -449,8 +613,13 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
               </div>
             </div>
 
-            {/* Sticky button bar for mobile, only for steps 1 and 3 */}
-            {currentStep !== 2 && (
+            {/* Sticky button bar for mobile, for actionable steps */}
+            {(
+              // For remote_user: show on step 1 (face) and their last step (step 2)
+              (isRemoteUser && (currentStep === 1 || currentStep === 2)) ||
+              // For normal user: show on steps 1 and 3
+              (!isRemoteUser && (currentStep === 1 || currentStep === 3))
+            ) && (
               <div className="w-full bg-white pt-2 pb-2 px-0 sm:px-0 flex space-x-3 sticky bottom-0 left-0 z-10 border-t border-gray-200" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.03)' }}>
                 <Button
                   variant="outline"
@@ -466,9 +635,12 @@ export default function CheckInProcessModal({ isOpen, onClose, onSuccess }: Chec
                   className="flex-1 btn-secondary"
                 >
                   {checkInMutation.isPending ? "Processing..." :
-                   currentStep === 3 ? "Complete Check-In" :
-                   currentStep === 1 ? "Verify Face" :
-                   "Verify Location"}
+                    // For remote_user, step 2 is "Complete Check-In"
+                    (isRemoteUser && currentStep === 2) ? "Complete Check-In" :
+                    // For normal user, step 3 is "Complete Check-In"
+                    (!isRemoteUser && currentStep === 3) ? "Complete Check-In" :
+                    currentStep === 1 ? "Verify Face" :
+                    "Verify Location"}
                 </Button>
               </div>
             )}
