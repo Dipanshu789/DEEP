@@ -1,4 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useCallback } from "react";
+
+// --- Remote user location tracking state ---
+// (Remove these lines from the top-level scope; move them inside the component)
 import userImg from "./assets/user.png";
 import io from "socket.io-client";
 import styled from "styled-components";
@@ -56,34 +60,6 @@ const StyledWrapper = styled.div`
 `;
 
 export default function UserDashboard() {
-  const queryClient = useQueryClient();
-  // Safe navigation function: uses useNavigate if available, else falls back to window.location.href
-  let navigate: (path: string) => void;
-  try {
-    const nav = useNavigate();
-    navigate = (path: string) => nav(path);
-  } catch (err) {
-    navigate = (path: string) => { window.location.href = path; };
-  }
-  useEffect(() => {
-    // Only run once on mount
-    const socket = io("http://localhost:5000", { transports: ["websocket"] });
-    // Socket.IO connecting (no sensitive logging)
-    socket.on("connect", () => {
-      // Socket.IO connected
-    });
-    socket.on("attendanceUpdated", (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance/company", data.companyCode] });
-      queryClient.invalidateQueries({ queryKey: ["/api/company", data.companyCode, "users"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance/user", data.userId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance/active"] });
-    });
-    return () => { socket.disconnect(); };
-  }, []); // Only on mount
-  // Profile photo upload state
-  const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-
   // Define a User type with at least firstName and companyCode (add more fields as needed)
   type User = {
     id?: string;
@@ -94,6 +70,35 @@ export default function UserDashboard() {
   };
 
   const { user } = useAuth() as { user: User };
+
+  // --- Remote user location tracking state ---
+  const [remoteLocation, setRemoteLocation] = useState<{lat: number, lon: number} | null>(null);
+  const remoteSocketRef = useRef<any>(null);
+  const remoteLocationIntervalRef = useRef<any>(null);
+  const [socketStatus, setSocketStatus] = useState<'connected' | 'reconnecting' | 'disconnected'>('disconnected');
+  const [queuedLocations, setQueuedLocations] = useState<any[]>([]);
+  const isQueuing = useRef(false);
+
+
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  // Fetch full user details (including full name) from backend
+  // (Removed duplicate declaration of userDetails)
+
+  // Persisted tracking state for remote users
+  const [remoteTrackingActive, setRemoteTrackingActive] = useState(() => {
+    // Only for remote users
+    if (typeof window !== 'undefined' && user?.id) {
+      const stored = localStorage.getItem('remoteTrackingActive');
+      return stored === 'true';
+    }
+    return false;
+  });
+
+  // Profile photo upload state
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   // Fetch full user details (including full name) from backend
   const { data: userDetails } = useQuery({
@@ -106,7 +111,113 @@ export default function UserDashboard() {
       return await res.json();
     },
   });
-  const { toast } = useToast();
+
+  // Start GPS tracking after successful check-in
+  // Helper: Send queued locations if any
+  const flushQueuedLocations = useCallback(() => {
+    if (remoteSocketRef.current && socketStatus === 'connected' && queuedLocations.length > 0) {
+      queuedLocations.forEach((payload) => {
+        remoteSocketRef.current.emit("locationUpdate", payload);
+      });
+      setQueuedLocations([]);
+      isQueuing.current = false;
+      toast({ title: "Location Sync", description: "Queued locations sent after reconnect.", variant: "default" });
+    }
+  }, [queuedLocations, socketStatus, toast]);
+
+  useEffect(() => {
+    if (remoteTrackingActive && user?.id && userDetails?.fullName) {
+      if (!remoteSocketRef.current) {
+        remoteSocketRef.current = io("http://localhost:5000", { transports: ["websocket"] });
+        // Connection status listeners
+        remoteSocketRef.current.on("connect", () => {
+          setSocketStatus('connected');
+          flushQueuedLocations();
+          toast({ title: "Live Tracking Connected", description: "Location tracking is live.", variant: "default" });
+        });
+        remoteSocketRef.current.on("disconnect", () => {
+          setSocketStatus('disconnected');
+          toast({ title: "Tracking Disconnected", description: "Live location tracking lost. Will retry...", variant: "destructive" });
+        });
+        remoteSocketRef.current.on("reconnect_attempt", () => {
+          setSocketStatus('reconnecting');
+        });
+        remoteSocketRef.current.on("reconnect", () => {
+          setSocketStatus('connected');
+          flushQueuedLocations();
+          toast({ title: "Tracking Reconnected", description: "Live location tracking restored.", variant: "default" });
+        });
+      }
+      // Start sending location every 3 seconds
+      remoteLocationIntervalRef.current = setInterval(() => {
+        if (!navigator.geolocation) {
+          toast({ title: "GPS Not Supported", description: "Your device does not support geolocation.", variant: "destructive" });
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const latitude = pos.coords.latitude.toString();
+            const longitude = pos.coords.longitude.toString();
+            setRemoteLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+            const payload = {
+              userId: user.id,
+              latitude,
+              longitude,
+              name: userDetails.fullName,
+              profileImageUrl: profileImage || userDetails.profileImageUrl || userImg,
+              timestamp: Date.now(),
+              status: 'active',
+              speed: pos.coords.speed || null,
+              companyCode: userDetails.companyCode || user.companyCode || null,
+            };
+            if (remoteSocketRef.current && socketStatus === 'connected') {
+              remoteSocketRef.current.emit("locationUpdate", payload);
+            } else {
+              setQueuedLocations((prev) => [...prev, payload]);
+              isQueuing.current = true;
+            }
+          },
+          (err) => {
+            toast({ title: "GPS Error", description: err.message, variant: "destructive" });
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }, 3000);
+      return () => {
+        if (remoteLocationIntervalRef.current) clearInterval(remoteLocationIntervalRef.current);
+      };
+    }
+  }, [remoteTrackingActive, user?.id, userDetails?.fullName, profileImage, socketStatus, flushQueuedLocations]);
+  // UI: Show connection status indicator (dot or banner)
+  const renderSocketStatus = () => {
+    let color = 'gray', text = 'Connecting...';
+    if (!remoteTrackingActive) {
+      color = 'gray'; text = 'Tracking Inactive';
+    } else if (socketStatus === 'connected') {
+      color = 'green'; text = 'Live Tracking Connected';
+    } else if (socketStatus === 'reconnecting') {
+      color = 'orange'; text = 'Reconnecting...';
+    } else if (socketStatus === 'disconnected') {
+      color = 'red'; text = 'Tracking Disconnected';
+    }
+    return (
+      <div style={{ position: 'fixed', top: 0, right: 0, zIndex: 9999, margin: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, display: 'inline-block' }}></span>
+        <span style={{ color, fontWeight: 600, fontSize: 14 }}>{text}</span>
+        {isQueuing.current && <span style={{ color: 'orange', fontWeight: 500, marginLeft: 8 }}>(Offline queue: {queuedLocations.length})</span>}
+      </div>
+    );
+  };
+  // Safe navigation function: uses useNavigate if available, else falls back to window.location.href
+  let navigate: (path: string) => void;
+  try {
+    const nav = useNavigate();
+    navigate = (path: string) => nav(path);
+  } catch (err) {
+    navigate = (path: string) => { window.location.href = path; };
+  }
+  // (Removed invalid useEffect that returned JSX. If you need to handle socket events, do so in a valid useEffect elsewhere.)
+  
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
   // 3-step check-in state
@@ -114,6 +225,70 @@ export default function UserDashboard() {
   const [faceVerified, setFaceVerified] = useState(false);
   const [locationVerified, setLocationVerified] = useState(false);
   const [trackingStarted, setTrackingStarted] = useState(false);
+  
+  useEffect(() => {
+    if (remoteTrackingActive && user?.id && userDetails?.fullName) {
+      if (!remoteSocketRef.current) {
+        remoteSocketRef.current = io("http://localhost:5000", { transports: ["websocket"] });
+        // Connection status listeners
+        remoteSocketRef.current.on("connect", () => {
+          setSocketStatus('connected');
+          flushQueuedLocations();
+          toast({ title: "Live Tracking Connected", description: "Location tracking is live.", variant: "default" });
+        });
+        remoteSocketRef.current.on("disconnect", () => {
+          setSocketStatus('disconnected');
+          toast({ title: "Tracking Disconnected", description: "Live location tracking lost. Will retry...", variant: "destructive" });
+        });
+        remoteSocketRef.current.on("reconnect_attempt", () => {
+          setSocketStatus('reconnecting');
+        });
+        remoteSocketRef.current.on("reconnect", () => {
+          setSocketStatus('connected');
+          flushQueuedLocations();
+          toast({ title: "Tracking Reconnected", description: "Live location tracking restored.", variant: "default" });
+        });
+      }
+      // Start sending location every 3 seconds
+      remoteLocationIntervalRef.current = setInterval(() => {
+        if (!navigator.geolocation) {
+          toast({ title: "GPS Not Supported", description: "Your device does not support geolocation.", variant: "destructive" });
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            setRemoteLocation({ lat, lon });
+            const payload = {
+              userId: user.id,
+              lat,
+              lon,
+              name: userDetails.fullName,
+              profileImageUrl: profileImage || userDetails.profileImageUrl || userImg,
+              timestamp: Date.now(),
+              status: 'active', // or use a real status if available
+              speed: pos.coords.speed || null,
+              companyCode: userDetails.companyCode || user.companyCode || null,
+            };
+            if (remoteSocketRef.current && socketStatus === 'connected') {
+              remoteSocketRef.current.emit("locationUpdate", payload);
+            } else {
+              setQueuedLocations((prev) => [...prev, payload]);
+              isQueuing.current = true;
+            }
+          },
+          (err) => {
+            toast({ title: "GPS Error", description: err.message, variant: "destructive" });
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }, 3000);
+      return () => {
+        if (remoteLocationIntervalRef.current) clearInterval(remoteLocationIntervalRef.current);
+      };
+    }
+  }, [remoteTrackingActive, user?.id, userDetails?.fullName, profileImage, socketStatus, flushQueuedLocations]);
 
   // Fetch profile image if available
   useEffect(() => {
@@ -281,25 +456,110 @@ export default function UserDashboard() {
       }
       setFaceVerified(true);
       setCheckInStep(2);
-      // Step 2: Geofence/location check
-      const position = await getCurrentPosition();
-      setLocationVerified(true);
-      setCheckInStep(3);
-      // Step 3: Tracking (call backend)
-      const res = await apiRequest("POST", "/api/attendance/checkin", {
-        userId: user?.id,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        faceDescriptor,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || "Check-in failed");
-      setTrackingStarted(true);
-      setCheckInStep(4);
-      toast({ title: "Checked In", description: "Check-in successful!" });
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance/user", user?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance/active"] });
-      setTimeout(() => setIsCheckInModalOpen(false), 1200);
+      // For remote_user, start GPS tracking after face verification
+      if (userDetails?.role === "remote_user") {
+        toast({ title: "Location Permission", description: "Please allow GPS access for remote tracking.", variant: "default" });
+        // Connect socket if not already
+        if (!remoteSocketRef.current) {
+          remoteSocketRef.current = io("http://localhost:5000", { transports: ["websocket"] });
+        }
+        // Start interval for location updates (send profile image and name)
+        remoteLocationIntervalRef.current = setInterval(async () => {
+          try {
+            const pos = await getCurrentPosition();
+            setRemoteLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+            remoteSocketRef.current.emit("locationUpdate", {
+              userId: user?.id,
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              name: userDetails.fullName,
+              profileImage: profileImage || userDetails.profileImageUrl || userImg,
+              timestamp: Date.now(),
+            });
+          } catch {}
+        }, 4000); // every 4 seconds
+        setRemoteTrackingActive(true);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('remoteTrackingActive', 'true');
+        }
+  // Resume remote tracking after refresh if needed
+  useEffect(() => {
+    if (
+      userDetails?.role === 'remote_user' &&
+      hasCheckedInToday &&
+      remoteTrackingActive &&
+      !remoteLocationIntervalRef.current
+    ) {
+      // Connect socket if not already
+      if (!remoteSocketRef.current) {
+        remoteSocketRef.current = io("http://localhost:5000", { transports: ["websocket"] });
+      }
+      remoteLocationIntervalRef.current = setInterval(async () => {
+        try {
+          const pos = await getCurrentPosition();
+          setRemoteLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+          remoteSocketRef.current.emit("locationUpdate", {
+            userId: user?.id,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            name: userDetails.fullName,
+            profileImage: profileImage || userDetails.profileImageUrl || userImg,
+            timestamp: Date.now(),
+          });
+        } catch {}
+      }, 4000);
+    }
+    // Cleanup on unmount
+    return () => {
+      if (remoteLocationIntervalRef.current) {
+        clearInterval(remoteLocationIntervalRef.current);
+        remoteLocationIntervalRef.current = null;
+      }
+      if (remoteSocketRef.current) {
+        remoteSocketRef.current.disconnect();
+        remoteSocketRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userDetails?.role, hasCheckedInToday, remoteTrackingActive]);
+        setLocationVerified(true);
+        setCheckInStep(3);
+        // Mark check-in as successful after both steps
+        const pos = await getCurrentPosition();
+        const res = await apiRequest("POST", "/api/attendance/checkin", {
+          userId: user?.id,
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          faceDescriptor,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || "Check-in failed");
+        setTrackingStarted(true);
+        setCheckInStep(4);
+        toast({ title: "Checked In", description: "Remote check-in successful! GPS tracking started." });
+        queryClient.invalidateQueries({ queryKey: ["/api/attendance/user", user?.id] });
+        queryClient.invalidateQueries({ queryKey: ["/api/attendance/active"] });
+        setTimeout(() => setIsCheckInModalOpen(false), 1200);
+      } else {
+        // Normal user flow
+        const position = await getCurrentPosition();
+        setLocationVerified(true);
+        setCheckInStep(3);
+        const res = await apiRequest("POST", "/api/attendance/checkin", {
+          userId: user?.id,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          faceDescriptor,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || "Check-in failed");
+        setTrackingStarted(true);
+        setCheckInStep(4);
+        toast({ title: "Checked In", description: "Check-in successful!" });
+        queryClient.invalidateQueries({ queryKey: ["/api/attendance/user", user?.id] });
+        queryClient.invalidateQueries({ queryKey: ["/api/attendance/active"] });
+        setTimeout(() => setIsCheckInModalOpen(false), 1200);
+      }
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
       setIsCheckInModalOpen(false);
@@ -336,6 +596,11 @@ export default function UserDashboard() {
       toast({ title: "Checked Out", description: "Check-out successful!" });
       queryClient.invalidateQueries({ queryKey: ["/api/attendance/user", user?.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/attendance/active"] });
+      // Stop tracking and clear persisted state
+      setRemoteTrackingActive(false);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('remoteTrackingActive');
+      }
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -490,8 +755,10 @@ export default function UserDashboard() {
     }
   })();
 
-return (
-    <div className="min-h-screen w-full flex flex-col bg-[#F7F7F7] dark:bg-[#181A20]" style={{ transition: 'background 0.3s' }}>
+  return (
+    <>
+      {renderSocketStatus()}
+      <div className="min-h-screen w-full flex flex-col bg-[#F7F7F7] dark:bg-[#181A20]" style={{ transition: 'background 0.3s' }}>
       {/* Modern Capsule Navigation Header - Compact Capsule */}
       <header className="w-full flex justify-center items-center py-2 px-2 sm:py-4 sm:px-4">
         <div
@@ -501,7 +768,7 @@ return (
           <div className="flex items-center gap-3 w-auto">
             <div className="relative w-12 h-12">
               <img
-                src={profileImage || "/assets/client.png"}
+                src={userDetails?.profileImageUrl || profileImage || "/assets/client.png"}
                 alt="Profile"
                 className="w-full h-full object-cover rounded-full border-2 border-primary bg-gradient-to-br from-purple-300 to-pink-300 shadow"
               />
@@ -518,7 +785,7 @@ return (
           {/* Modern Capsule Logout Button (compact) */}
           <button
             className="custom-logout-btn Btn flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-[#232946] shadow transition-all duration-300 hover:bg-black hover:text-white dark:hover:bg-pink-600 dark:hover:text-white"
-            style={{ border: 'none', cursor: 'pointer', position: 'relative', overflow: 'hidden', borderRadius: '999px', minWidth: 40, minHeight: 40, fontWeight: 600, fontSize: '1em', boxShadow: '0 2px 8px rgba(44, 62, 80, 0.12)', color: 'inherit', outline: 'none' }}
+            style={{ border: 'none', cursor: 'pointer', position: 'relative', overflow: 'hidden', borderRadius: '999px', minWidth: 40, minHeight: 40, fontWeight: 600, fontSize: '1em', boxShadow: '0 2px 8px rgba(44,62,80,0.12)', color: 'inherit', outline: 'none' }}
             onClick={handleLogout}
           >
             <svg viewBox="0 0 512 512" style={{ width: '18px', fill: 'currentColor', filter: 'drop-shadow(0 0 4px #232946)' }} className="dark:fill-white dark:drop-shadow-lg">
@@ -776,6 +1043,7 @@ return (
           onClose={() => setIsCheckInModalOpen(false)}
           onSuccess={async () => {
             setIsCheckInModalOpen(false);
+            setRemoteTrackingActive(true);
             await queryClient.invalidateQueries({ queryKey: ["/api/attendance/today"] });
             await queryClient.invalidateQueries({ queryKey: ["/api/attendance/active"] });
             await queryClient.invalidateQueries({ queryKey: ["/api/attendance/user", user?.id] });
@@ -789,7 +1057,19 @@ return (
       <div className="w-full fixed bottom-0 left-0 bg-white shadow-lg flex justify-center items-center py-2 sm:py-3 z-50">
         {/* Home Icon */}
         <div className="mx-3 sm:mx-6">
-          <button className="footer-btn" onClick={() => navigate('/')} title="Home">
+          <button
+            className="footer-btn"
+            onClick={userDetails?.role === "remote_user" ? undefined : () => {
+              if (userDetails?.role === "user") {
+                navigate("/user-dashboard");
+              } else {
+                navigate("/");
+              }
+            }}
+            title="Home"
+            disabled={userDetails?.role === "remote_user"}
+            style={userDetails?.role === "remote_user" ? { opacity: 0.5, cursor: "not-allowed" } : {}}
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="size-6">
               <path d="M3 12l9-9 9 9" />
               <path d="M9 21V9h6v12" />
@@ -833,5 +1113,6 @@ return (
         </div>
       </div>
     </div>
+    </>
   );
 }
