@@ -47,6 +47,9 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
+  // Setup Socket.io live tracking
+  const { setupLiveTracking } = await import("./liveTracking");
+  setupLiveTracking(server);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
