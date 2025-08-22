@@ -1,11 +1,23 @@
 import { db } from "./db";
-import { eq, and, or } from "drizzle-orm";
+
+import { eq, and, or, desc } from "drizzle-orm";
 import {
   users, companies, geofences, attendanceLogs, messages, passwordResets,
   type InsertUser, type User, type InsertCompany, type Company, type InsertGeofence, type Geofence, type InsertAttendanceLog, type AttendanceLog, type InsertMessage, type Message
 } from "@shared/schema";
 
 export class PostgresStorage {
+  // ...existing methods...
+  // Delete a remote user's live location by userId
+  async deleteLiveLocationByUserId(userId: string): Promise<void> {
+    const { liveLocations } = await import("../shared/schema");
+    await db.delete(liveLocations).where(eq(liveLocations.userId, userId));
+  }
+  // Get the most recently registered company (highest id)
+  async getLatestCompany(): Promise<Company | undefined> {
+    const [company] = await db.select().from(companies).orderBy(desc(companies.id)).limit(1);
+    return company;
+  }
   // Create a password reset token
   async createPasswordResetToken(userId: string, token: string, expiresAt: Date) {
     await db.insert(passwordResets).values({ userId, token, expiresAt }).returning();
@@ -27,11 +39,37 @@ export class PostgresStorage {
     const [company] = await db.select().from(companies).where(eq(companies.companyCode, code));
     return company;
   }
-  // Find a company by user email (for fallback in check-in)
   async getCompanyByUserEmail(email: string): Promise<Company | undefined> {
     const [company] = await db.select().from(companies).where(eq(companies.email, email));
     return company;
-}
+  }
+
+  // Upsert live location for a user
+  async upsertLiveLocation({ userId, companyCode, latitude, longitude }: { userId: string, companyCode: string, latitude: number, longitude: number }) {
+    const { liveLocations } = await import("../shared/schema");
+    const latStr = latitude.toString();
+    const lonStr = longitude.toString();
+    // Get user's name and profile image for required fields
+    const user = await db.select().from(users).where(eq(users.id, userId));
+    const name = user[0]?.fullName || user[0]?.email || userId;
+  const profileImageUrl = user[0]?.profileImageUrl || null;
+    const existing = await db.select().from(liveLocations).where(eq(liveLocations.userId, userId));
+    if (existing.length > 0) {
+      await db.update(liveLocations)
+        .set({ latitude: latStr, longitude: lonStr, profileImageUrl, lastUpdated: new Date() })
+        .where(eq(liveLocations.userId, userId));
+    } else {
+      await db.insert(liveLocations).values({
+        userId,
+        name,
+        latitude: latStr,
+        longitude: lonStr,
+        profileImageUrl,
+        companyCode,
+        lastUpdated: new Date()
+      });
+    }
+  }
 // Fetch all messages between two users (both directions)
 async getMessagesBetweenUsersBothDirections(userA: string, userB: string): Promise<Message[]> {
   // Fetch messages where (senderId=userA AND to=userB) OR (senderId=userB AND to=userA)
@@ -212,7 +250,7 @@ async getMessagesBetweenUsersBothDirections(userA: string, userB: string): Promi
     const usersList = await db
       .select()
       .from(users)
-      .where(and(eq(users.companyCode, code), eq(users.role, 'user')));
+      .where(and(eq(users.companyCode, code), or(eq(users.role, 'user'), eq(users.role, 'remote_user'))));
     return usersList.map(this.toCamelCase.bind(this));
   }
   // Create a new user in the database
