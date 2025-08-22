@@ -1,3 +1,12 @@
+// --- LIVE REMOTE_USER LOCATIONS ENDPOINT FOR ADMIN DASHBOARD ---
+// This endpoint returns all live remote_user locations from memory (Socket.io)
+
+import type { Express, Request, Response } from "express";
+// ...existing imports...
+
+// ...existing code...
+
+// (Removed duplicate registerRoutes implementation. Only one registerRoutes function should exist in this file.)
 console.log('=== ROUTES.TS LOADED (TOP OF FILE) ===');
 
 // --- IMPORTS (must be at top in ES modules) ---
@@ -28,7 +37,6 @@ console.log('Loaded routes.ts (DEBUG)');
   // (Removed duplicate top-level route definitions for /api/user/:id)
   // These routes are already defined inside registerRoutes(app)
 
-import type { Express, Request, Response } from "express";
 import crypto from "crypto";
 import { Server as SocketIOServer } from "socket.io";
 import { createServer, type Server } from "http";
@@ -55,6 +63,65 @@ const geofenceInputSchema = insertGeofenceSchema.extend({
 import express from 'express';
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Endpoint to delete a specific remote user's live location
+  app.delete('/api/live-locations/:userId', async (req: Request, res: Response) => {
+    try {
+      const userId = req.params.userId;
+      if (!userId) return res.status(400).json({ message: 'Missing userId' });
+      await storage.deleteLiveLocationByUserId(userId);
+      res.json({ message: 'Live location deleted for user ' + userId });
+    } catch (error) {
+      console.error('Error deleting live location:', error);
+      res.status(500).json({ message: 'Failed to delete live location' });
+    }
+  });
+  // Endpoint to check if an email is already registered to another user
+  app.get('/api/user/email-exists', async (req: Request, res: Response) => {
+    const email = req.query.email;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ exists: false });
+    }
+    const user = await storage.getUserByEmail(email);
+    if (user && user.id) {
+      return res.json({ exists: true, userId: user.id });
+    }
+    return res.json({ exists: false });
+  });
+  // --- LIVE REMOTE_USER LOCATIONS ENDPOINT FOR ADMIN DASHBOARD ---
+  // This endpoint returns all live remote_user locations from PostgreSQL using Drizzle ORM
+  app.get('/api/live-locations', async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { liveLocations } = await import('../shared/schema');
+      // Return all live locations stored in the database
+      const all = await db.select().from(liveLocations);
+      const formatted = all.map((u: any) => ({
+          userId: u.userId,
+          lat: typeof u.latitude === 'string' ? parseFloat(u.latitude) : u.latitude,
+          lon: typeof u.longitude === 'string' ? parseFloat(u.longitude) : u.longitude,
+          name: u.name,
+          profileImageUrl: u.profileImageUrl
+            ? (u.profileImageUrl.startsWith('data:image')
+                ? u.profileImageUrl
+                : `data:image/png;base64,${u.profileImageUrl}`)
+            : null,
+          route: u.route || [],
+          speed: u.speed ? (typeof u.speed === 'string' ? parseFloat(u.speed) : u.speed) : null,
+          lastUpdated: u.lastUpdated,
+          status: u.status || null,
+          companyCode: u.companyCode || null,
+      }));
+      res.json(formatted);
+    } catch (error) {
+      console.error('Error fetching live locations from PostgreSQL:', error);
+      res.status(500).json({ message: 'Failed to fetch live locations' });
+    }
+  });
+  // Simulated location API for MVP
+  const simulatedLocationRouter = (await import("./simulatedLocation")).default;
+  app.use(simulatedLocationRouter);
+  // Initialize Socket.IO server if not already present
+  let io: SocketIOServer | undefined = app.locals.io;
   // --- Reset Password Route ---
   app.post('/api/reset-password', async (req: Request, res: Response) => {
     try {
@@ -204,22 +271,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: 'Internal server error' });
     }
   });
-  // --- Socket.IO setup ---
-  let io: SocketIOServer | null = null;
-  if (!app.locals.io) {
-    const httpServer = createServer(app);
-    io = new SocketIOServer(httpServer, {
-      cors: { origin: "*" }
-    });
-    app.locals.io = io;
-    // Listen for connections
-    io.on("connection", (socket) => {
-      console.log("Socket.IO client connected:", socket.id);
-    });
-    // Return httpServer at end of function
-  } else {
-    io = app.locals.io;
-  }
+  // ...existing code...
   // Get user details by ID (legacy)
   app.get('/api/user/:id', async (req: Request, res: Response) => {
     try {
@@ -262,6 +314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: user.id,
         fullName: user.fullName || '',
         email: user.email || '',
+        role: user.role || '',
         createdAt
       });
     } catch (error) {
@@ -282,6 +335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: user.id,
         fullName: user.fullName || '',
         email: user.email || '',
+        profileImageUrl: user.profileImageUrl || null,
       });
     } catch (error) {
       console.error('Error fetching user details:', error);
@@ -325,10 +379,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.query.userId;
       if (!userId) return res.status(400).json({ message: 'Missing userId.' });
       const user = await storage.getUser(userId);
-      if (!user || !user.profileImageUrl) return res.json({ url: null });
-      // Return as data URL (assume PNG)
-      const dataUrl = `data:image/png;base64,${user.profileImageUrl}`;
-      res.json({ url: dataUrl });
+      if (!user) return res.json({ url: null });
+      if (user.profileImageUrl) {
+        // Return as data URL (assume PNG)
+        const dataUrl = `data:image/png;base64,${user.profileImageUrl}`;
+        return res.json({ url: dataUrl });
+      } else {
+        // Fallback to default avatar (served from public or CDN)
+        return res.json({ url: '/assets/client.png' });
+      }
     } catch (error) {
       console.error('Error fetching profile image:', error);
       res.status(500).json({ message: 'Failed to fetch profile image.' });
@@ -441,6 +500,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let userData = req.body;
       console.log('Signup request body:', userData);
+       // Debug: Log if id is missing or auto-generated
+       if (!userData.id) {
+         console.log('[SIGNUP] No id provided, generating UUID.');
+       } else {
+         console.log(`[SIGNUP] Received id: ${userData.id}`);
+       }
       // Auto-generate a UUID if id is missing
       if (!userData.id) {
         userData.id = uuidv4();
@@ -457,7 +522,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userData.full_name = userData.fullName;
         delete userData.fullName;
       }
-      // Do not require or set companyCode at signup; it will be set in join-company flow
+  // Do NOT set companyCode during admin signup. It will be set after company registration.
       // Validate user data (after mapping fields)
       userData = insertUserSchema.safeParse(userData);
       if (!userData.success) {
@@ -466,13 +531,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userToInsert = userData.data;
       console.log('[SIGNUP] Final userData to insert:', userToInsert);
       const user = await storage.createUser(userToInsert);
-      // Do not check for companyCode at signup; allow user creation without it
       const userFromDb = await storage.getUser(user.id);
       console.log('[SIGNUP] Created user:', userFromDb);
-
-
-      // Always return userId in response
-      res.json({ ...userFromDb, userId });
+       // Debug: Log returned user id
+       if (userFromDb && userFromDb.id) {
+         console.log(`[SIGNUP] Returning user with id: ${userFromDb.id}`);
+       }
+      // Always return userId and companyCode in response
+      if (!userFromDb) {
+        return res.status(404).json({ message: "User not found after signup." });
+      }
+      res.json({ ...userFromDb, userId, companyCode: userFromDb.companyCode });
     } catch (error) {
       console.error("Error signing up user:", error);
       res.status(500).json({ message: "Failed to sign up user", error: (error instanceof Error ? error.message : String(error)) });
@@ -488,6 +557,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       // Auto-generate a UUID for id
       const id = uuidv4();
+    console.log(`[SIGNUP-WITH-FACE] Generated id: ${id}`);
       const user = await storage.createUser({
         id,
         email,
@@ -509,20 +579,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Company routes
   app.post('/api/company', async (req: any, res) => {
     try {
-      // const adminId = req.user.claims.sub;
-      const adminId = req.query.userId || req.body.userId || "demo-admin";
-      // Add adminId to the request body before parsing
+      // Use userId from face registration, not adminId
+      let userId = req.query.userId || req.body.id;
+      let userFromDb = null;
+      if (!userId && req.body.email) {
+        userFromDb = await storage.getUserByEmail(req.body.email);
+        if (userFromDb && userFromDb.id) {
+          userId = userFromDb.id;
+          console.log(`[COMPANY REGISTER] Retrieved userId from DB by email: ${userId}`);
+        }
+      } else {
+        userFromDb = await storage.getUser(userId);
+      }
+      // Prevent duplicate emails in users table (enterprise-level security)
+      if (req.body.email) {
+        const existingUser = await storage.getUserByEmail(req.body.email);
+        if (existingUser && existingUser.id !== userFromDb?.id) {
+          return res.status(400).json({ message: "This email is already registered to another user. Duplicate emails are not allowed." });
+        }
+        // Prevent duplicate emails in companies table
+        const existingCompanyWithEmail = await storage.getCompanyByUserEmail?.(req.body.email);
+        if (existingCompanyWithEmail) {
+          return res.status(400).json({ message: "This email is already registered to another company. Duplicate company emails are not allowed." });
+        }
+      }
+      if (!userFromDb || !userFromDb.id || userFromDb.id === "demo-admin") {
+        console.log(`[COMPANY REGISTER] Received userId: ${userFromDb?.id}`);
+        return res.status(400).json({ message: "Missing or invalid userId. Please ensure you are sending the correct user id from face registration or signup." });
+      }
+      // Check that the email provided matches the admin's signup email
+      if (req.body.email && userFromDb.email && req.body.email !== userFromDb.email) {
+        return res.status(400).json({ message: "The company email must match the email used at signup. Please enter the same email address." });
+      }
+      console.log(`[COMPANY REGISTER] Using userId: ${userFromDb.id}`);
+      // Add userId and adminId to the request body before parsing
       const requestData = {
         ...req.body,
-        adminId,
+        userId,
+        adminId: userId,
       };
+      // Validate companyCode: required, length, and uniqueness
+      if (!requestData.companyCode || typeof requestData.companyCode !== "string" || requestData.companyCode.length < 3) {
+        return res.status(400).json({ message: "Company code is required and must be at least 3 characters." });
+      }
+      // Debug: Log received companyCode
+      console.log(`[COMPANY REGISTER] Received companyCode: ${requestData.companyCode}`);
+      // Check uniqueness
+      const existingCompany = await storage.getCompanyByCode(requestData.companyCode);
+      if (existingCompany) {
+        return res.status(400).json({ message: "Company code already exists. Please choose a different code." });
+      }
       const companyData = insertCompanySchema.parse(requestData);
       // Hash the company password
       const passwordHash = await bcrypt.hash(companyData.passwordHash, 10);
       const company = await storage.createCompany({
         ...companyData,
         passwordHash,
+        companyCode: companyData.companyCode, // Explicitly use the code from the request
       });
+      // After company creation, robustly update user's record with companyCode
+      // Always update the user table for the correct user (by userId) with the company code
+      let updatedUser = null;
+      if (company && company.companyCode && userId) {
+        updatedUser = await storage.updateUserProfile(userId, { companyCode: company.companyCode });
+      }
+      if (updatedUser) {
+        console.log('[COMPANY REGISTER] Updated user with companyCode:', updatedUser);
+      } else {
+        console.error('[COMPANY REGISTER] Failed to update user with companyCode:', {
+          companyCode: company?.companyCode,
+          userId,
+          email: company?.email
+        });
+      }
       res.json(company);
     } catch (error) {
       console.error("Error creating company:", error);
@@ -572,12 +701,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/company/admin/me', async (req: any, res) => {
     try {
-      // const adminId = req.user.claims.sub;
-      const adminId = req.query.userId || req.body.userId || "demo-admin";
-      const company = await storage.getCompanyByAdminId(adminId);
+      // Instead of adminId, fetch the most recently registered company (highest id)
+      const company = await storage.getLatestCompany();
+      if (!company) {
+        return res.status(404).json({ message: "Company information not found." });
+      }
       res.json(company);
     } catch (error) {
-      console.error("Error fetching admin company:", error);
+      console.error("Error fetching latest company:", error);
       res.status(500).json({ message: "Failed to fetch company" });
     }
   });
@@ -682,7 +813,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const filtered = users.map(u => {
         let profileImageUrl = u.profileImageUrl || null;
         if (profileImageUrl && typeof profileImageUrl === 'string' && !profileImageUrl.startsWith('data:')) {
-          // Assume PNG if not already a data URL
           profileImageUrl = `data:image/png;base64,${profileImageUrl}`;
         }
         return {
@@ -690,7 +820,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: u.fullName || '',
           email: u.email,
           companyCode: u.companyCode,
-          profileImageUrl
+          profileImageUrl,
+          role: u.role || 'user'
         };
       });
       res.json(filtered);
@@ -729,15 +860,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Attendance routes
   app.post('/api/attendance/checkin', async (req: any, res) => {
-    // --- Check-in window logic: Only allow check-in between 9:00 and 11:30 IST ---
-    const nowIST = new Date(new Date().getTime() + (new Date().getTimezoneOffset() * 60000) + 5.5 * 60 * 60 * 1000);
-    const hourIST = nowIST.getHours();
-    const minuteIST = nowIST.getMinutes();
-    // Allow check-in from 9:00 to 11:30 AM IST
-    const isAllowedIST = (hourIST > 9 || (hourIST === 9 && minuteIST >= 0)) && (hourIST < 11 || (hourIST === 11 && minuteIST <= 30));
-    if (!isAllowedIST) {
-      return res.status(400).json({ message: "Check-in allowed only between 9:00 AM and 11:30 AM IST" });
-    }
+  // --- Check-in window logic ENABLED ---
+  const nowIST = new Date(new Date().getTime() + (new Date().getTimezoneOffset() * 60000) + 5.5 * 60 * 60 * 1000);
+  const hourIST = nowIST.getHours();
+  const minuteIST = nowIST.getMinutes();
+  const isAllowedIST = (hourIST > 9 || (hourIST === 9 && minuteIST >= 0)) && (hourIST < 11 || (hourIST === 11 && minuteIST <= 30));
+  if (!isAllowedIST) {
+    return res.status(400).json({ message: "Check-in allowed only between 9:00 AM and 11:30 AM IST" });
+  }
     try {
       // Accept userId from body, query, or session
       const userId = req.body.userId || req.query.userId || (req.session && req.session.userId);
@@ -782,29 +912,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: `Face verification failed: distance ${distance.toFixed(3)}` });
       }
 
-      // --- Step 2: Geofence Check ---
-      const geofence = await storage.getGeofenceByCompanyCode(user.companyCode);
-      if (geofence) {
-        // Calculate distance from geofence center
-        const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-          const toRad = (v: number) => (v * Math.PI) / 180;
-          const R = 6371000; // meters
-          const dLat = toRad(lat2 - lat1);
-          const dLon = toRad(lon2 - lon1);
-          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          return R * c;
-        };
-        const userLat = parseFloat(latitude);
-        const userLon = parseFloat(longitude);
-        const fenceLat = parseFloat(geofence.latitude);
-        const fenceLon = parseFloat(geofence.longitude);
-        const radius = geofence.radius || 100;
-        const dist = haversine(userLat, userLon, fenceLat, fenceLon);
-        if (dist > radius) {
-          return res.status(400).json({ message: `Geofence check failed: outside allowed area (${dist.toFixed(1)}m > ${radius}m)` });
+      // --- Step 2: Geofence Check (skip for remote_user) ---
+      if (user.role !== 'remote_user') {
+        const geofence = await storage.getGeofenceByCompanyCode(user.companyCode);
+        if (geofence) {
+          // Calculate distance from geofence center
+          const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+            const toRad = (v: number) => (v * Math.PI) / 180;
+            const R = 6371000; // meters
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+          };
+          const userLat = parseFloat(latitude);
+          const userLon = parseFloat(longitude);
+          const fenceLat = parseFloat(geofence.latitude);
+          const fenceLon = parseFloat(geofence.longitude);
+          const radius = geofence.radius || 100;
+          const dist = haversine(userLat, userLon, fenceLat, fenceLon);
+          if (dist > radius) {
+            return res.status(400).json({ message: `Geofence check failed: outside allowed area (${dist.toFixed(1)}m > ${radius}m)` });
+          }
         }
       }
 
@@ -824,6 +956,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isTracking: true,
         status: "present",
       });
+      // Upsert live location for remote users
+      if (user.role === 'remote_user') {
+        await storage.upsertLiveLocation({
+          userId: user.id,
+          companyCode: user.companyCode,
+          latitude: parseFloat(latitude),
+          longitude: parseFloat(longitude)
+        });
+      }
       if (io) {
         io.emit("attendanceUpdated", {
           userId: user.id,
