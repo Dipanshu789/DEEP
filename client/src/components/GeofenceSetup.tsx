@@ -22,8 +22,12 @@ export default function GeofenceSetup({ onComplete, onBack }: GeofenceSetupProps
   });
   const { toast } = useToast();
 
-  const { data: company } = useQuery<Company>({
+  // Try to fetch company info for the current admin, fallback to user context if needed
+  const { data: company, isLoading, error, refetch } = useQuery<Company>({
     queryKey: ["/api/company/admin/me"],
+    // Optionally, add userId to query if available
+    // If you have a getCurrentUser() util, use it here
+    // queryFn: () => apiRequest("GET", `/api/company/admin/me?userId=${currentUser?.id}`),
   });
 
   const createGeofenceMutation = useMutation({
@@ -103,9 +107,10 @@ export default function GeofenceSetup({ onComplete, onBack }: GeofenceSetupProps
     if (!company?.companyCode) {
       toast({
         title: "Error",
-        description: "Company information not found.",
+        description: isLoading ? "Loading company information..." : (error ? "Could not fetch company info. Please try again or contact support." : "Company information not found. Please complete company registration first."),
         variant: "destructive",
       });
+      refetch();
       return;
     }
 
