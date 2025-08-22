@@ -13,12 +13,14 @@ import { useToast } from "@/hooks/use-toast";
 import { getCurrentUser } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 
+
 const companyRegisterSchema = z.object({
   name: z.string().min(1, "Company name is required"),
-  email: z.string().email("Please enter a valid email"),
+  email: z.string().email("Please enter the email which you used as your personal email"),
   employeeCount: z.string().min(1, "Please select employee count"),
   companyCode: z.string().min(3, "Company code must be at least 3 characters"),
   companyPassword: z.string().min(6, "Password must be at least 6 characters"),
+  adminId: z.string().min(1, "Admin ID is required"),
 });
 
 type CompanyRegisterForm = z.infer<typeof companyRegisterSchema>;
@@ -58,10 +60,12 @@ export default function CompanyRegisterPage() {
 
   const companyRegisterMutation = useMutation({
     mutationFn: async (data: CompanyRegisterForm) => {
-      if (!currentUser?.id) throw new Error("User not found");
+      if (!currentUser?.id && !currentUser?.email) throw new Error("User not found");
+      // Always send both id and email so backend can retrieve correct user
       const response = await apiRequest("POST", "/api/company/register", {
         ...data,
-        adminId: currentUser.id,
+        adminId: currentUser?.id,
+        email: currentUser?.email,
       });
       return response.json();
     },
@@ -82,11 +86,47 @@ export default function CompanyRegisterPage() {
   });
 
   const onSubmit = (data: CompanyRegisterForm) => {
-    companyRegisterMutation.mutate(data);
+    // Check that the entered email matches the signup email
+    if (currentUser?.email && data.email !== currentUser.email) {
+      toast({
+        title: "Email mismatch",
+        description: "The company email must match the email you used at signup. Please enter the same email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+    // Check for duplicate email before submitting
+    fetch(`/api/user/email-exists?email=${encodeURIComponent(data.email)}`)
+      .then(res => res.json())
+      .then(result => {
+        if (result.exists && result.userId !== currentUser?.id) {
+          toast({
+            title: "Duplicate email",
+            description: "This email is already registered to another user. Duplicate emails are not allowed.",
+            variant: "destructive",
+          });
+        } else {
+          companyRegisterMutation.mutate(data);
+        }
+      })
+      .catch(() => {
+        toast({
+          title: "Error",
+          description: "Could not verify email. Please try again.",
+          variant: "destructive",
+        });
+      });
   };
 
   return (
     <div className="fixed inset-0 flex flex-col p-6 overflow-y-auto">
+      {/* Universal, forceful notice for all users */}
+      <div className="w-full max-w-lg mx-auto my-4">
+        <div className="bg-yellow-300 border-4 border-yellow-700 text-yellow-900 p-5 rounded-2xl shadow-xl flex items-center justify-center animate-pulse">
+          <span className="font-extrabold text-lg mr-3">⚠️ Important:</span>
+          <span className="font-bold text-lg">Please enter the email which you used as your personal email (the same email you used at signup)</span>
+        </div>
+      </div>
       <div className="w-full max-w-md mx-auto my-auto animate-slide-up">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl mx-auto mb-4 flex items-center justify-center">
@@ -111,13 +151,17 @@ export default function CompanyRegisterPage() {
           </div>
           
           <div className="neumorphic-inset rounded-2xl p-4">
-            <Label className="text-sm text-gray-600 mb-2 block">Company Email</Label>
+            <Label className="text-sm text-gray-800 font-bold mb-2 block flex items-center">
+              <span className="bg-yellow-200 text-yellow-900 px-2 py-1 rounded mr-2 animate-pulse">⚠️ Quick Tip</span>
+              Please enter the email which you used as your personal email
+            </Label>
             <Input
               type="email"
               placeholder="company@example.com"
-              className="w-full bg-transparent border-none outline-none text-gray-800 placeholder-gray-400"
+              className="w-full bg-transparent border-2 border-yellow-500 outline-none text-gray-800 placeholder-gray-400 focus:border-yellow-700"
               {...form.register("email")}
             />
+            <div className="text-sm text-yellow-800 font-semibold mt-2 animate-pulse">💡 Please enter the email which you entered at first step of signup.</div>
             {form.formState.errors.email && (
               <p className="text-red-500 text-xs mt-1">{form.formState.errors.email.message}</p>
             )}
@@ -142,24 +186,13 @@ export default function CompanyRegisterPage() {
           </div>
 
           <div className="neumorphic-inset rounded-2xl p-4">
-            <Label className="text-sm text-gray-600 mb-2 block">Create Company Code</Label>
-            <div className="flex items-center">
-              <Input
-                type="text"
-                placeholder="Create unique code"
-                className="flex-1 bg-transparent border-none outline-none text-gray-800 placeholder-gray-400"
-                {...form.register("companyCode")}
-              />
-              <Button
-                type="button"
-                variant="link"
-                onClick={() => generateCodeMutation.mutate()}
-                disabled={generateCodeMutation.isPending}
-                className="text-primary text-sm ml-2 hover:underline"
-              >
-                {generateCodeMutation.isPending ? "..." : "Generate"}
-              </Button>
-            </div>
+            <Label className="text-sm text-gray-600 mb-2 block">Company Code (Manual)</Label>
+            <Input
+              type="text"
+              placeholder="Enter your desired company code (e.g. DEEP2025)"
+              className="w-full bg-transparent border-none outline-none text-gray-800 placeholder-gray-400"
+              {...form.register("companyCode")}
+            />
             {form.formState.errors.companyCode && (
               <p className="text-red-500 text-xs mt-1">{form.formState.errors.companyCode.message}</p>
             )}
