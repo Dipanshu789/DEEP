@@ -131,7 +131,7 @@ function Router() {
       if (location === "/" || location === "/landing" || location === "/onboarding") {
         if (userRole === "admin") {
           setTimeout(() => setLocation("/admin-dashboard", { replace: true }), 0);
-        } else if (userRole === "user") {
+        } else if (userRole === "user" || userRole === "remote_user") {
           setTimeout(() => setLocation("/user-dashboard", { replace: true }), 0);
         }
       }
