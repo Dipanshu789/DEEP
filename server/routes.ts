@@ -941,7 +941,7 @@ app.delete('/api/live-locations/:userId', async (req: Request, res: Response) =>
         return Math.sqrt(a.reduce((sum, v, i) => sum + Math.pow(v - b[i], 2), 0));
       };
       const distance = euclidean(storedDescriptor, newDescriptor);
-      if (distance > 0.7) {
+      if (distance > 0.8) {
         return res.status(400).json({ message: `Face verification failed: distance ${distance.toFixed(3)}` });
       }
 
