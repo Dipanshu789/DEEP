@@ -7,6 +7,10 @@ import {
 } from "@shared/schema";
 
 export class PostgresStorage {
+
+
+// Export a singleton instance for use everywhere (must be outside the class definition)
+
   // ...existing methods...
   // Delete a remote user's live location by userId
   async deleteLiveLocationByUserId(userId: string): Promise<void> {
@@ -154,7 +158,30 @@ async getMessagesBetweenUsersBothDirections(userA: string, userB: string): Promi
   }
 
   async createAttendanceLog(insertAttendanceLog: InsertAttendanceLog): Promise<AttendanceLog> {
-    const [log] = await db.insert(attendanceLogs).values(insertAttendanceLog).returning();
+    // Store checkInTime as IST string (do not convert to Date)
+    let values = { ...insertAttendanceLog };
+    // Ensure checkInTime is a string (IST)
+    if (values.checkInTime && typeof values.checkInTime !== 'string') {
+      let d;
+      if ((values.checkInTime as any) instanceof Date) {
+        d = values.checkInTime;
+      } else {
+        d = new Date(values.checkInTime);
+      }
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      values.checkInTime = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    if (values.checkOutTime && typeof values.checkOutTime !== 'string') {
+      let d;
+      if ((values.checkOutTime as any) instanceof Date) {
+        d = values.checkOutTime;
+      } else {
+        d = new Date(values.checkOutTime);
+      }
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      values.checkOutTime = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    const [log] = await db.insert(attendanceLogs).values(values).returning();
     return log;
   }
 
