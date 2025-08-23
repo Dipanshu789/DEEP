@@ -937,14 +937,14 @@ app.delete('/api/live-locations/:userId', async (req: Request, res: Response) =>
 
   // Attendance routes
   app.post('/api/attendance/checkin', async (req: any, res) => {
-  // --- Check-in window logic DISABLED for testing ---
-  // const nowIST = new Date(new Date().getTime() + (new Date().getTimezoneOffset() * 60000) + 5.5 * 60 * 60 * 1000);
-  // const hourIST = nowIST.getHours();
-  // const minuteIST = nowIST.getMinutes();
-  // const isAllowedIST = (hourIST > 9 || (hourIST === 9 && minuteIST >= 0)) && (hourIST < 11 || (hourIST === 11 && minuteIST <= 30));
-  // if (!isAllowedIST) {
-  //   return res.status(400).json({ message: "Check-in allowed only between 9:00 AM and 11:30 AM IST" });
-  // }
+  // --- Check-in window logic ENABLED ---
+  const nowIST = new Date(new Date().getTime() + (new Date().getTimezoneOffset() * 60000) + 5.5 * 60 * 60 * 1000);
+  const hourIST = nowIST.getHours();
+  const minuteIST = nowIST.getMinutes();
+  const isAllowedIST = (hourIST > 9 || (hourIST === 9 && minuteIST >= 0)) && (hourIST < 11 || (hourIST === 11 && minuteIST <= 30));
+  if (!isAllowedIST) {
+    return res.status(400).json({ message: "Check-in allowed only between 9:00 AM and 11:30 AM IST" });
+  }
     try {
       // Accept userId from body, query, or session
       const userId = req.body.userId || req.query.userId || (req.session && req.session.userId);
