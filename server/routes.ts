@@ -63,6 +63,50 @@ const geofenceInputSchema = insertGeofenceSchema.extend({
 import express from 'express';
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Export attendance logs as CSV for a company
+  app.get('/api/attendance/company/export', async (req: Request, res: Response) => {
+    try {
+      const companyCodeRaw = req.query.companyCode;
+      if (!companyCodeRaw) return res.status(400).json({ message: 'Missing companyCode' });
+      const companyCode = Array.isArray(companyCodeRaw) ? String(companyCodeRaw[0]) : String(companyCodeRaw);
+      const logs = await storage.getAttendanceLogsByCompany(companyCode);
+      if (!logs || logs.length === 0) {
+        return res.status(404).json({ message: 'No attendance logs found for this company.' });
+      }
+      // Fetch all users for this company and build a map of userId -> fullName
+      const users = await storage.getUsersByCompanyCode(companyCode);
+      const userMap = Object.fromEntries(users.map(u => [u.id, u.fullName || u.email || u.id]));
+      // Insert fullName next to userId in each log
+      const logsWithFullName = logs.map(log => ({
+        ...log,
+        fullName: userMap[log.userId] || log.userId
+      }));
+      // Move fullName next to userId in the CSV
+      const keys = Object.keys(logsWithFullName[0]);
+      const userIdIdx = keys.indexOf('userId');
+      let headerArr = [...keys];
+      if (userIdIdx !== -1) {
+        headerArr.splice(userIdIdx + 1, 0, 'fullName');
+        if (!headerArr.includes('fullName')) headerArr.push('fullName');
+      }
+      const header = headerArr.join(',');
+      const rows = logsWithFullName.map(log => {
+        const row = headerArr.map(k => {
+          let v = (log as Record<string, any>)[k];
+          if (typeof v === 'string' && v.includes(',')) return '"' + v.replace(/"/g, '""') + '"';
+          return v ?? '';
+        });
+        return row.join(',');
+      });
+      const csv = [header, ...rows].join('\r\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=attendance_logs_${companyCode}.csv`);
+      res.send(csv);
+    } catch (error) {
+      console.error('Error exporting attendance logs:', error);
+      res.status(500).json({ message: 'Failed to export attendance logs.' });
+    }
+  });
   // Endpoint to delete a specific remote user's live location
 app.delete('/api/live-locations/:userId', async (req: Request, res: Response) => {
   try {
@@ -1096,6 +1140,8 @@ app.delete('/api/live-locations/:userId', async (req: Request, res: Response) =>
       checkOutTime: toISTString(log.checkOutTime),
       createdAt: toISTString(log.createdAt),
       updatedAt: toISTString(log.updatedAt),
+      // Add fullName if possible (for API responses)
+      fullName: log.fullName
     };
   }
 
