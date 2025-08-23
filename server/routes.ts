@@ -64,15 +64,48 @@ import express from 'express';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Endpoint to delete a specific remote user's live location
-  app.delete('/api/live-locations/:userId', async (req: Request, res: Response) => {
+app.delete('/api/live-locations/:userId', async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.userId;
+    if (!userId) return res.status(400).json({ message: 'Missing userId' });
+    await storage.deleteLiveLocationByUserId(userId);
+    res.json({ message: 'Live location deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete live location' });
+  }
+});
+
+  // DEBUG: Enhanced debug endpoint for attendance export troubleshooting
+  app.get('/api/debug/attendance/company', async (req: Request, res: Response) => {
     try {
-      const userId = req.params.userId;
-      if (!userId) return res.status(400).json({ message: 'Missing userId' });
-      await storage.deleteLiveLocationByUserId(userId);
-      res.json({ message: 'Live location deleted for user ' + userId });
+      const companyCodeRaw = req.query.companyCode;
+      if (!companyCodeRaw) return res.status(400).json({ message: 'Missing companyCode' });
+      const companyCode = Array.isArray(companyCodeRaw) ? String(companyCodeRaw[0]) : String(companyCodeRaw);
+      
+      // Check if company exists
+      const company = await storage.getCompanyByCode(companyCode);
+      if (!company) {
+        return res.status(404).json({ message: 'Company not found', companyCode });
+      }
+      
+      // Get all logs for the company (no date filter)
+      const logs = await storage.getAttendanceLogsByCompany(companyCode);
+      
+      // Get company users to provide more context
+      const users = await storage.getUsersByCompanyCode(companyCode);
+      
+      res.json({ 
+        companyCode, 
+        companyExists: true,
+        companyName: company.name,
+        logsCount: logs.length, 
+        usersCount: users.length,
+        logs: logs.slice(0, 10),
+        usersSample: users.slice(0, 5).map(u => ({ id: u.id, fullName: u.fullName, email: u.email }))
+      });
     } catch (error) {
-      console.error('Error deleting live location:', error);
-      res.status(500).json({ message: 'Failed to delete live location' });
+      console.error("Debug endpoint error:", error);
+      res.status(500).json({ message: "Debug endpoint failed", error: String(error) });
     }
   });
   // Endpoint to check if an email is already registered to another user
@@ -809,7 +842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Company code is required." });
       }
       const users = await storage.getUsersByCompanyCode(companyCode);
-      // Support both fullName and full_name for name, and include profileImageUrl
+      // Return fullName for frontend compatibility
       const filtered = users.map(u => {
         let profileImageUrl = u.profileImageUrl || null;
         if (profileImageUrl && typeof profileImageUrl === 'string' && !profileImageUrl.startsWith('data:')) {
@@ -817,7 +850,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         return {
           id: u.id,
-          name: u.fullName || '',
+          fullName: u.fullName || '',
           email: u.email,
           companyCode: u.companyCode,
           profileImageUrl,
@@ -860,14 +893,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Attendance routes
   app.post('/api/attendance/checkin', async (req: any, res) => {
-  // --- Check-in window logic ENABLED ---
-  const nowIST = new Date(new Date().getTime() + (new Date().getTimezoneOffset() * 60000) + 5.5 * 60 * 60 * 1000);
-  const hourIST = nowIST.getHours();
-  const minuteIST = nowIST.getMinutes();
-  const isAllowedIST = (hourIST > 9 || (hourIST === 9 && minuteIST >= 0)) && (hourIST < 11 || (hourIST === 11 && minuteIST <= 30));
-  if (!isAllowedIST) {
-    return res.status(400).json({ message: "Check-in allowed only between 9:00 AM and 11:30 AM IST" });
-  }
+  // --- Check-in window logic DISABLED for testing ---
+  // const nowIST = new Date(new Date().getTime() + (new Date().getTimezoneOffset() * 60000) + 5.5 * 60 * 60 * 1000);
+  // const hourIST = nowIST.getHours();
+  // const minuteIST = nowIST.getMinutes();
+  // const isAllowedIST = (hourIST > 9 || (hourIST === 9 && minuteIST >= 0)) && (hourIST < 11 || (hourIST === 11 && minuteIST <= 30));
+  // if (!isAllowedIST) {
+  //   return res.status(400).json({ message: "Check-in allowed only between 9:00 AM and 11:30 AM IST" });
+  // }
     try {
       // Accept userId from body, query, or session
       const userId = req.body.userId || req.query.userId || (req.session && req.session.userId);
@@ -941,16 +974,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // --- Step 3: Tracking ---
-      // Store check-in time as IST
+      // Store check-in time as IST (YYYY-MM-DDTHH:mm:ss+05:30)
       const now = new Date();
       const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
       const istOffset = 5.5 * 60 * 60 * 1000;
       const istDate = new Date(utc + istOffset);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const istString = `${istDate.getFullYear()}-${pad(istDate.getMonth() + 1)}-${pad(istDate.getDate())}T${pad(istDate.getHours())}:${pad(istDate.getMinutes())}:${pad(istDate.getSeconds())}+05:30`;
       const attendanceLog = await storage.createAttendanceLog({
         userId: user.id,
         companyCode: user.companyCode,
         date: today,
-        checkInTime: istDate,
+        checkInTime: istString,
         checkInLat: latitude,
         checkInLon: longitude,
         isTracking: true,
@@ -1009,7 +1044,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         hoursWorkedStr = `${h}h ${m}m`;
       }
       // Update attendance log
-      const checkOutTime = new Date();
+      const checkOutTime = new Date().toISOString();
       const updatedLog = await storage.updateAttendanceLog(log.id, {
         checkOutTime,
         checkOutLat: latitude,
@@ -1081,7 +1116,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.params.companyCode, 
         date as string
       );
-      res.json(logs.map(formatAttendanceLog));
+      // Fetch all users for this company to map userId -> fullName
+      const users = await storage.getUsersByCompanyCode(req.params.companyCode);
+      const userMap = new Map(users.map(u => [u.id, u.fullName || null]));
+      res.json(logs.map(log => ({
+        ...formatAttendanceLog(log),
+        fullName: userMap.get(log.userId) || null,
+      })));
     } catch (error) {
       console.error("Error fetching company attendance:", error);
       res.status(500).json({ message: "Failed to fetch attendance" });
@@ -1143,14 +1184,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Query param version for company attendance (for frontend consistency)
 
   app.get('/api/attendance/company', async (req: Request, res: Response) => {
+    // Debug logging
+    console.log('Company attendance endpoint called');
     try {
       const companyCodeRaw = req.query.companyCode;
       if (!companyCodeRaw) return res.status(400).json({ message: 'Missing companyCode' });
       const companyCode = Array.isArray(companyCodeRaw) ? String(companyCodeRaw[0]) : String(companyCodeRaw);
       // Always return only today's logs for the company
       const today = new Date().toISOString().split('T')[0];
+      console.log('companyCode:', companyCode, 'today:', today);
       const logs = await storage.getAttendanceLogsByCompany(companyCode, today);
-      res.json(logs.map(formatAttendanceLog));
+      console.log('logs.length:', logs.length, 'logs:', logs);
+      // Fetch all users for this company to map userId -> fullName
+      const users = await storage.getUsersByCompanyCode(companyCode);
+      const userMap = new Map(users.map(u => [u.id, u.fullName || null]));
+      res.json(logs.map(log => ({
+        ...formatAttendanceLog(log),
+        fullName: userMap.get(log.userId) || null,
+      })));
     } catch (error) {
       console.error("Error fetching company attendance (query):", error);
       res.status(500).json({ message: "Failed to fetch attendance" });
@@ -1163,8 +1214,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const companyCodeRaw = req.query.companyCode;
       if (!companyCodeRaw) return res.status(400).json({ message: 'Missing companyCode' });
       const companyCode = Array.isArray(companyCodeRaw) ? String(companyCodeRaw[0]) : String(companyCodeRaw);
-      // Get all logs for the company (all dates)
+      
+      // Validate company exists
+      const company = await storage.getCompanyByCode(companyCode);
+      if (!company) {
+        return res.status(404).json({ message: 'Company not found' });
+      }
+
+      // Get all logs for the company (no date filter)
       const logs = await storage.getAttendanceLogsByCompany(companyCode);
+      console.log('[EXPORT DEBUG]', { companyCode, logsCount: logs.length, logs: logs.slice(0, 3) });
+      
+      if (logs.length === 0) {
+        return res.status(404).json({ message: 'No attendance logs found for this company' });
+      }
+
       // CSV headers for all fields
       const csvHeaders = [
         'ID', 'User ID', 'Company Code', 'Date', 'Check In', 'Check Out', 'Check In Lat', 'Check In Lng', 'Check Out Lat', 'Check Out Lng', 'Hours Worked', 'Status', 'Created At'
@@ -1184,11 +1248,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         log.status || '',
         log.createdAt || ''
       ]);
+      
       let csv = csvHeaders.join(',') + '\n';
       csv += csvRows.map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n');
-      res.setHeader('Content-Type', 'text/csv');
+      
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="attendance_logs_${companyCode}.csv"`);
-      res.send(csv);
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+      res.status(200).send(csv);
     } catch (error) {
       console.error("Error exporting attendance logs:", error);
       res.status(500).json({ message: "Failed to export attendance logs" });
