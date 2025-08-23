@@ -95,8 +95,8 @@ export const attendanceLogs = pgTable("attendance_logs", {
   userId: varchar("user_id").notNull(),
   companyCode: varchar("company_code").notNull(),
   date: varchar("date").notNull(), // YYYY-MM-DD format
-  checkInTime: timestamp("check_in_time"),
-  checkOutTime: timestamp("check_out_time"),
+  checkInTime: text("check_in_time"), // Store IST as string
+  checkOutTime: text("check_out_time"), // Store IST as string
   checkInLat: decimal("check_in_lat", { precision: 10, scale: 8 }),
   checkInLon: decimal("check_in_lon", { precision: 11, scale: 8 }),
   checkOutLat: decimal("check_out_lat", { precision: 10, scale: 8 }),
