@@ -1,16 +1,21 @@
 import adminImg from "./assets/admin.png";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AttendanceLog, User as BaseUser } from "@shared/schema";
+import { AttendanceLog as BaseAttendanceLog, User as BaseUser } from "@shared/schema";
 
 // Extend User type to include latitude, longitude, lastUpdated, and route for map markers
 type User = BaseUser & {
   latitude?: number;
   longitude?: number;
   lastUpdated?: string | Date | null;
-  route?: { lat: number; lng: number }[]; // Add route property
-  speed?: number | null; // Add speed property
-  status?: string; // Add status property
+  route?: { lat: number; lng: number }[];
+  speed?: number | null;
+  status?: string;
+};
+
+// Extend AttendanceLog to include fullName for logs returned from backend
+type AttendanceLog = BaseAttendanceLog & {
+  fullName?: string;
 };
 import { Clock, UserCheck, UserX, AlertCircle, TrendingUp, Download, Filter } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -179,14 +184,25 @@ export default function AdminDashboard() {
   }
 
   // Use the checkInTime from DB directly for recent activity
-  const recentActivity = attendanceLogs
+  type RecentActivity = {
+    employee: string;
+    action: string;
+    time: string | Date | null | undefined;
+    type: "checkin" | "checkout";
+  };
+
+  const recentActivity: RecentActivity[] = attendanceLogs
     .slice(0, 5)
-    .map(log => ({
-      employee: employees.find(emp => emp.id === log.userId)?.fullName || "Unknown",
-      action: log.checkOutTime ? "Checked out" : "Checked in",
-      time: log.checkInTime, // Always use DB checkInTime for display
-      type: log.checkOutTime ? "checkout" : "checkin",
-    }));
+    .map(log => {
+      // Prefer log.fullName (from backend), then employeeObj?.fullName, then userId
+      const employeeObj = employees.find(emp => emp.id === log.userId);
+      return {
+        employee: log.fullName || employeeObj?.fullName || log.userId,
+        action: log.checkOutTime ? "Checked out" : "Checked in",
+        time: log.checkInTime, // Always use DB checkInTime for display
+        type: log.checkOutTime ? "checkout" : "checkin",
+      };
+    });
 
   const [uploading, setUploading] = useState(false);
   const [profileImageUrl, setProfileImageUrl] = useState("");
@@ -253,16 +269,37 @@ export default function AdminDashboard() {
     }
   };
 
-  function handleExportLogs(event: React.MouseEvent<HTMLButtonElement, MouseEvent>): void {
+  async function handleExportLogs(event: React.MouseEvent<HTMLButtonElement, MouseEvent>): Promise<void> {
     event.preventDefault();
-    if (!user || !user.companyCode) return;
+    if (!user || !user.companyCode) {
+      alert("User or company code is missing.");
+      return;
+    }
     const url = `/api/attendance/company/export?companyCode=${user.companyCode}`;
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `attendance_logs_${user.companyCode}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to export CSV');
+      }
+      const blob = await res.blob();
+      if (blob.size === 0) {
+        alert('No attendance data found for this company.');
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.setAttribute('download', `attendance_logs_${user.companyCode}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      if (error instanceof Error) {
+        alert(`Error: ${error.message}`);
+      } else {
+        alert('Failed to export attendance logs.');
+      }
+    }
   }
   return (
     <div className="min-h-screen bg-[#FAFAFA] dark:bg-gray-900">
@@ -314,11 +351,26 @@ export default function AdminDashboard() {
 
         {/* Modern Donut Chart Card */}
         <div className="w-full flex flex-col items-center justify-center mb-8">
-          <AttendanceDonutChart
-            total={teamMembers.filter((m: User) => m.role === 'user' || m.role === 'remote_user').length}
-            present={todayAttendance.filter((log: any) => (log.status === "present" || log.checkInTime) && (log.role === 'user' || log.role === 'remote_user')).length}
-            absent={Math.max(0, teamMembers.filter((m: User) => m.role === 'user' || m.role === 'remote_user').length - todayAttendance.filter((log: any) => (log.status === "present" || log.checkInTime) && (log.role === 'user' || log.role === 'remote_user')).length)}
-          />
+          {(() => {
+            // Only consider users with role 'user' or 'remote_user' as team members
+            const filteredMembers = teamMembers.filter((m: User) => m.role === 'user' || m.role === 'remote_user');
+            // For present, only count logs for those users
+            const presentIds = new Set(
+              todayAttendance
+                .filter((log: any) => (log.status === "present" || log.checkInTime) && filteredMembers.some((m: User) => m.id === log.userId))
+                .map((log: any) => log.userId)
+            );
+            const present = presentIds.size;
+            const total = filteredMembers.length;
+            const absent = Math.max(0, total - present);
+            return (
+              <AttendanceDonutChart
+                total={total}
+                present={present}
+                absent={absent}
+              />
+            );
+          })()}
         </div>
 
         {/* Main Content Grid */}
@@ -495,17 +547,33 @@ export default function AdminDashboard() {
                               <div className="h-8 w-8 bg-gray-300 rounded-full mr-3"></div>
                               <div>
                                 <div className="text-sm font-medium text-gray-900">
-                                  {employee?.fullName}
+                                  {log.fullName || employee?.fullName || log.userId}
                                 </div>
                                 <div className="text-sm text-gray-500">Employee</div>
                               </div>
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                            {log.checkInTime ? formatISTTimeString(typeof log.checkInTime === "string" ? log.checkInTime : log.checkInTime.toISOString().replace("T", " ").substring(0, 19)) : "--"}
+                            {log.checkInTime
+                              ? formatISTTimeString(
+                                  typeof log.checkInTime === "string"
+                                    ? log.checkInTime
+                                    : typeof log.checkInTime === "number"
+                                    ? new Date(log.checkInTime).toISOString().replace("T", " ").substring(0, 19)
+                                    : ""
+                                )
+                              : "--"}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {log.checkOutTime ? formatISTTimeString(typeof log.checkOutTime === "string" ? log.checkOutTime : log.checkOutTime.toISOString().replace("T", " ").substring(0, 19)) : "--"}
+                            {log.checkOutTime
+                              ? formatISTTimeString(
+                                  typeof log.checkOutTime === "string"
+                                    ? log.checkOutTime
+                                    : typeof log.checkOutTime === "number"
+                                    ? new Date(log.checkOutTime).toISOString().replace("T", " ").substring(0, 19)
+                                    : ""
+                                )
+                              : "--"}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {log.hoursWorked ? `${log.hoursWorked}h` : "--"}
